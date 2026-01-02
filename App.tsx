@@ -6,6 +6,7 @@ import Transactions from './components/Transactions';
 import Goals from './components/Goals';
 import Reports from './components/Reports';
 import Profile from './components/Profile';
+import Admin from './components/Admin';
 import { db } from './services/db';
 import { AuthState, Transaction, Goal, UserProfile, Category } from './types';
 import { Wallet, LogIn, UserPlus, Loader2, Eye, EyeOff } from 'lucide-react';
@@ -40,6 +41,40 @@ const App: React.FC = () => {
       setGoals([]);
     }
   }, [auth.isAuthenticated]);
+
+  // Loop de verificação de contribuições a cada 2 minutos
+  useEffect(() => {
+    if (!auth.isAuthenticated || !auth.user) return;
+
+    const checkUserContribution = async () => {
+      try {
+        // Recarregar perfil do banco para verificar atualizações
+        const currentEmail = auth.user!.email;
+        const updatedProfile = await db.getProfile(currentEmail);
+        if (updatedProfile) {
+          const currentDate = auth.user.lastContributionDate || '';
+          const updatedDate = updatedProfile.lastContributionDate || '';
+          
+          if (updatedDate !== currentDate) {
+            // Atualizar perfil se houver mudança na data de contribuição
+            setAuth(prev => ({
+              ...prev,
+              user: updatedProfile
+            }));
+            console.log('✅ Contribuição atualizada para:', currentEmail);
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao verificar contribuição:', error);
+      }
+    };
+
+    checkUserContribution(); // Verificar imediatamente
+    const interval = setInterval(checkUserContribution, 120000); // A cada 2 minutos
+
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth.isAuthenticated, auth.user?.email, auth.user?.lastContributionDate]);
 
   const loadUserData = async (userId: string) => {
     setIsLoading(true);
@@ -111,7 +146,7 @@ const App: React.FC = () => {
     } else if (pass === savedPassword) {
       setAuth({
         isAuthenticated: true,
-        user: profile || { name: 'Usuário', email, currency: 'BRL' }
+        user: profile || { name: 'Usuário', email, currency: 'BRL', role: 'user' }
       });
     } else {
       alert('Senha incorreta!');
@@ -135,7 +170,7 @@ const App: React.FC = () => {
       return;
     }
     
-    const newUser: UserProfile = { name, email, currency: 'BRL' };
+    const newUser: UserProfile = { name, email, currency: 'BRL', role: 'user' };
     await db.saveProfile(newUser);
     await db.savePassword(email, pass);
     setAuth({ isAuthenticated: true, user: newUser });
@@ -154,6 +189,10 @@ const App: React.FC = () => {
     setTransactions([newT, ...transactions]);
   };
 
+  const updateTransaction = (id: string, updated: Omit<Transaction, 'id'>) => {
+    setTransactions(transactions.map(t => t.id === id ? { ...updated, id } : t));
+  };
+
   const deleteTransaction = (id: string) => {
     setTransactions(transactions.filter(t => t.id !== id));
   };
@@ -161,6 +200,10 @@ const App: React.FC = () => {
   const addGoal = (g: Omit<Goal, 'id'>) => {
     const newG = { ...g, id: Math.random().toString(36).substr(2, 9) };
     setGoals([...goals, newG]);
+  };
+
+  const updateGoal = (id: string, updated: Omit<Goal, 'id'>) => {
+    setGoals(goals.map(g => g.id === id ? { ...updated, id } : g));
   };
 
   const deleteGoal = (id: string) => {
@@ -177,6 +220,7 @@ const App: React.FC = () => {
     setAuth(prev => ({ ...prev, user: updated }));
     setIsLoading(false);
   };
+
 
   const changePassword = async (oldP: string, newP: string): Promise<boolean> => {
     if (!auth.user) return false;
@@ -253,11 +297,12 @@ const App: React.FC = () => {
             Sincronizando com a nuvem...
           </div>
         )}
-        {activeTab === 'dashboard' && <Dashboard transactions={transactions} goals={goals} />}
-        {activeTab === 'transactions' && <Transactions transactions={transactions} onAdd={addTransaction} onDelete={deleteTransaction} />}
-        {activeTab === 'goals' && <Goals goals={goals} onAdd={addGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />}
-        {activeTab === 'reports' && <Reports transactions={transactions} />}
+        {activeTab === 'dashboard' && <Dashboard transactions={transactions} goals={goals} user={auth.user} />}
+        {activeTab === 'transactions' && <Transactions transactions={transactions} onAdd={addTransaction} onUpdate={updateTransaction} onDelete={deleteTransaction} />}
+        {activeTab === 'goals' && <Goals goals={goals} onAdd={addGoal} onUpdate={updateGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />}
+        {activeTab === 'reports' && <Reports transactions={transactions} goals={goals} />}
         {activeTab === 'profile' && <Profile user={auth.user!} onUpdate={updateUserProfile} onChangePassword={changePassword} onLogout={handleLogout} />}
+        {activeTab === 'admin' && auth.user && auth.user.role === 'admin' && <Admin userEmail={auth.user.email} />}
       </div>
     </Layout>
   );

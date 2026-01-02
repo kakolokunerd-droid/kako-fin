@@ -1,17 +1,73 @@
 
 import React, { useEffect, useState } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, BrainCircuit, Sparkles, Loader2 } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, BrainCircuit, Sparkles, Loader2, Heart, Copy, X } from 'lucide-react';
 import { Transaction, Goal } from '../types';
 import { getFinancialAdvice } from '../services/geminiService';
+import { 
+  LineChart, 
+  Line, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  ResponsiveContainer,
+  Legend
+} from 'recharts';
 
 interface DashboardProps {
   transactions: Transaction[];
   goals: Goal[];
+  user?: { lastContributionDate?: string };
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, goals }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
   const [advice, setAdvice] = useState<string>("");
   const [loadingAdvice, setLoadingAdvice] = useState<boolean>(true);
+  const [showSupportBanner, setShowSupportBanner] = useState(false);
+
+  // Verificar a cada minuto se deve mostrar o banner
+  useEffect(() => {
+    const checkBanner = () => {
+      if (!user?.lastContributionDate) {
+        setShowSupportBanner(true);
+        return;
+      }
+      
+      const lastContribution = new Date(user.lastContributionDate);
+      const now = new Date();
+      const daysSinceContribution = Math.floor((now.getTime() - lastContribution.getTime()) / (1000 * 60 * 60 * 24));
+      
+      setShowSupportBanner(daysSinceContribution >= 30);
+    };
+    
+    checkBanner(); // Verificar imediatamente
+    
+    const interval = setInterval(checkBanner, 120000); // Verificar a cada 2 minutos
+
+    return () => clearInterval(interval);
+  }, [user?.lastContributionDate]);
+
+  const handleCopyPix = async () => {
+    try {
+      await navigator.clipboard.writeText('61992459777');
+      alert('PIX copiado! Chave: 61992459777');
+    } catch (err) {
+      // Fallback para navegadores que não suportam clipboard API
+      const textArea = document.createElement('textarea');
+      textArea.value = '61992459777';
+      textArea.style.position = 'fixed';
+      textArea.style.opacity = '0';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        alert('PIX copiado! Chave: 61992459777');
+      } catch (e) {
+        alert('Chave PIX: 61992459777\n(Copie manualmente)');
+      }
+      document.body.removeChild(textArea);
+    }
+  };
 
   const totalIncome = transactions
     .filter(t => t.type === 'income')
@@ -20,6 +76,35 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals }) => {
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + t.amount, 0);
   const balance = totalIncome - totalExpense;
+
+  // Dados para gráfico de evolução semanal
+  const getWeeklyEvolution = () => {
+    const last7Days = Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      d.setHours(0, 0, 0, 0);
+      return {
+        dateObj: d,
+        date: d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })
+      };
+    });
+
+    return last7Days.map(({ dateObj, date }) => {
+      const dayTransactions = transactions.filter(t => {
+        const tDate = new Date(t.date);
+        tDate.setHours(0, 0, 0, 0);
+        return tDate.getTime() === dateObj.getTime();
+      });
+
+      return {
+        date,
+        receita: dayTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0),
+        despesa: dayTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0)
+      };
+    });
+  };
+
+  const weeklyEvolution = getWeeklyEvolution();
 
   useEffect(() => {
     const fetchAdvice = async () => {
@@ -33,6 +118,49 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals }) => {
 
   return (
     <div className="space-y-6">
+      {/* Support Banner - Mobile Only */}
+      {showSupportBanner && (
+        <div className="md:hidden bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-4 md:p-6 lg:p-8 text-white relative overflow-hidden shadow-xl">
+          <button
+            onClick={() => setShowSupportBanner(false)}
+            className="absolute top-3 right-3 text-white/80 hover:text-white transition-colors z-10"
+            title="Fechar"
+          >
+            <X size={18} />
+          </button>
+          <div className="relative z-10 flex flex-col gap-3">
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-white/20 backdrop-blur-md rounded-xl border border-white/30">
+                <Heart size={20} className="text-pink-300" />
+              </div>
+              <h4 className="text-lg font-bold">Apoie o Kako Fin</h4>
+            </div>
+            <div className="text-sm text-indigo-50 space-y-2">
+              <p>
+                Sua contribuição é de <span className="font-bold">suma importância</span> para a manutenção do app e para continuarmos oferecendo este serviço gratuitamente.
+              </p>
+              <div className="flex items-center gap-2 bg-white/20 backdrop-blur-md rounded-xl p-3 border border-white/30">
+                <span className="font-semibold">PIX:</span>
+                <code className="flex-1 bg-white/30 px-3 py-1.5 rounded-lg font-mono font-bold text-base">61992459777</code>
+                <button
+                  onClick={handleCopyPix}
+                  className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all"
+                  title="Copiar PIX"
+                >
+                  <Copy size={16} />
+                </button>
+              </div>
+              <p className="text-xs opacity-90 italic">
+                Não é obrigatório, mas sua ajuda faz toda a diferença! ❤️
+              </p>
+            </div>
+          </div>
+          {/* Decorative elements */}
+          <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
+          <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-indigo-400/20 rounded-full blur-2xl"></div>
+        </div>
+      )}
+
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
         <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 md:gap-4 min-w-0">
@@ -100,6 +228,51 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals }) => {
         {/* Decorative elements */}
         <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
         <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
+      </div>
+
+      {/* Weekly Evolution Chart */}
+      <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h4 className="font-bold text-slate-800 mb-4 text-sm md:text-base flex items-center gap-2">
+          <TrendingUp className="text-indigo-600" size={18} />
+          Evolução Semanal (Últimos 7 dias)
+        </h4>
+        <div className="h-64 md:h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={weeklyEvolution}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis 
+                dataKey="date" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 11, fill: '#94a3b8' }}
+              />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+              <Tooltip 
+                formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '12px' }}
+              />
+              <Legend />
+              <Line 
+                type="monotone" 
+                dataKey="receita" 
+                stroke="#22c55e" 
+                strokeWidth={3}
+                dot={{ fill: '#22c55e', r: 4 }}
+                activeDot={{ r: 6 }}
+                name="Receitas"
+              />
+              <Line 
+                type="monotone" 
+                dataKey="despesa" 
+                stroke="#f43f5e" 
+                strokeWidth={3}
+                dot={{ fill: '#f43f5e', r: 4 }}
+                activeDot={{ r: 6 }}
+                name="Despesas"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
       </div>
 
       {/* Secondary Row: Recent Transactions and Goals */}

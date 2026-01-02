@@ -18,11 +18,15 @@ export interface Goal {
   deadline: string;
 }
 
+export type UserRole = 'admin' | 'user';
+
 export interface UserProfile {
   name: string;
   email: string;
   avatar?: string;
   currency: string;
+  lastContributionDate?: string;
+  role?: UserRole;
 }
 
 export interface AuthState {

@@ -1,36 +1,66 @@
 
 import React, { useState } from 'react';
-import { Plus, Search, Filter, Trash2 } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Edit2 } from 'lucide-react';
 import { Transaction, TransactionType, Category } from '../types';
 
 interface TransactionsProps {
   transactions: Transaction[];
   onAdd: (transaction: Omit<Transaction, 'id'>) => void;
+  onUpdate: (id: string, transaction: Omit<Transaction, 'id'>) => void;
   onDelete: (id: string) => void;
 }
 
-const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDelete }) => {
+const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpdate, onDelete }) => {
   const [showModal, setShowModal] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState(Category.FOOD);
   const [type, setType] = useState<TransactionType>('expense');
 
+  const resetForm = () => {
+    setDescription('');
+    setAmount('');
+    setDate(new Date().toISOString().split('T')[0]);
+    setCategory(Category.FOOD);
+    setType('expense');
+    setEditingTransaction(null);
+  };
+
+  const handleOpenModal = (transaction?: Transaction) => {
+    if (transaction) {
+      setEditingTransaction(transaction);
+      setDescription(transaction.description);
+      setAmount(transaction.amount.toString());
+      setDate(transaction.date);
+      setCategory(transaction.category as Category);
+      setType(transaction.type);
+    } else {
+      resetForm();
+    }
+    setShowModal(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!description || !amount) return;
 
-    onAdd({
+    const transactionData = {
       description,
       amount: parseFloat(amount),
       date,
       category,
       type
-    });
+    };
 
-    setDescription('');
-    setAmount('');
+    if (editingTransaction) {
+      onUpdate(editingTransaction.id, transactionData);
+    } else {
+      onAdd(transactionData);
+    }
+
+    resetForm();
     setShowModal(false);
   };
 
@@ -46,7 +76,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
           />
         </div>
         <button 
-          onClick={() => setShowModal(true)}
+          onClick={() => handleOpenModal()}
           className="w-full md:w-auto flex items-center justify-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all font-semibold"
         >
           <Plus size={20} />
@@ -88,12 +118,22 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
                       {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </td>
                     <td className="px-6 py-4 text-center">
-                      <button 
-                        onClick={() => onDelete(t.id)}
-                        className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                      >
-                        <Trash2 size={18} />
-                      </button>
+                      <div className="flex items-center justify-center gap-2">
+                        <button 
+                          onClick={() => handleOpenModal(t)}
+                          className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
+                          title="Editar transação"
+                        >
+                          <Edit2 size={18} />
+                        </button>
+                        <button 
+                          onClick={() => onDelete(t.id)}
+                          className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                          title="Excluir transação"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -107,7 +147,9 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-slate-100">
-              <h3 className="text-xl font-bold text-slate-800">Nova Transação</h3>
+              <h3 className="text-xl font-bold text-slate-800">
+                {editingTransaction ? 'Editar Transação' : 'Nova Transação'}
+              </h3>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
@@ -182,7 +224,10 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
               <div className="flex gap-3 pt-4">
                 <button 
                   type="button"
-                  onClick={() => setShowModal(false)}
+                  onClick={() => {
+                    resetForm();
+                    setShowModal(false);
+                  }}
                   className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
                 >
                   Cancelar
@@ -191,7 +236,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
                   type="submit"
                   className="flex-1 py-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 rounded-xl"
                 >
-                  Salvar
+                  {editingTransaction ? 'Atualizar' : 'Salvar'}
                 </button>
               </div>
             </form>

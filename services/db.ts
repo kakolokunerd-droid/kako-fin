@@ -235,7 +235,15 @@ class CloudDatabase {
   async getProfile(email: string): Promise<UserProfile | null> {
     if (!this.isSupabaseConfigured()) {
       const profile = localStorage.getItem(`fintrack_profile_${email}`);
-      return profile ? JSON.parse(profile) : null;
+      if (profile) {
+        const parsed = JSON.parse(profile);
+        return {
+          ...parsed,
+          lastContributionDate: parsed.lastContributionDate || undefined,
+          role: parsed.role || 'user'
+        };
+      }
+      return null;
     }
 
     try {
@@ -269,12 +277,21 @@ class CloudDatabase {
         email: data.email,
         avatar: data.avatar || undefined,
         currency: data.currency || "BRL",
+        lastContributionDate: data.last_contribution_date || undefined,
+        role: (data.role as 'admin' | 'user') || 'user',
       };
-    } catch (error) {
-      console.error("Erro ao buscar perfil do Supabase:", error);
-      const profile = localStorage.getItem(`fintrack_profile_${email}`);
-      return profile ? JSON.parse(profile) : null;
-    }
+      } catch (error) {
+        console.error("Erro ao buscar perfil do Supabase:", error);
+        const profile = localStorage.getItem(`fintrack_profile_${email}`);
+        if (profile) {
+          const parsed = JSON.parse(profile);
+          return {
+            ...parsed,
+            role: parsed.role || 'user'
+          };
+        }
+        return null;
+      }
   }
 
   // Salvamento de perfil no Supabase ou localStorage (fallback)
@@ -295,6 +312,8 @@ class CloudDatabase {
           name: profile.name,
           avatar: profile.avatar || null,
           currency: profile.currency || "BRL",
+          last_contribution_date: profile.lastContributionDate || null,
+          role: profile.role || 'user',
           updated_at: new Date().toISOString(),
         },
         {

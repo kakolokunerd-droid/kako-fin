@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   LayoutDashboard, 
   ArrowUpCircle, 
@@ -8,7 +8,11 @@ import {
   BarChart3, 
   User, 
   LogOut,
-  Wallet
+  Wallet,
+  Heart,
+  X,
+  Copy,
+  Settings
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
@@ -21,13 +25,50 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLogout, user }) => {
+  const [showSupportBanner, setShowSupportBanner] = useState(false);
+  
+  // Verificar se é admin baseado no role
+  const isAdmin = user?.role === 'admin';
+
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transações', icon: Wallet },
     { id: 'goals', label: 'Metas', icon: Target },
     { id: 'reports', label: 'Relatórios', icon: BarChart3 },
     { id: 'profile', label: 'Perfil', icon: User },
+    ...(isAdmin ? [{ id: 'admin', label: 'Admin', icon: Settings }] : []),
   ];
+
+  // Verificar a cada minuto se deve mostrar o banner
+  React.useEffect(() => {
+    const checkBanner = () => {
+      if (!user?.lastContributionDate) {
+        setShowSupportBanner(true);
+        return;
+      }
+      
+      const lastContribution = new Date(user.lastContributionDate);
+      const now = new Date();
+      const daysSinceContribution = Math.floor((now.getTime() - lastContribution.getTime()) / (1000 * 60 * 60 * 24));
+      
+      setShowSupportBanner(daysSinceContribution >= 30);
+    };
+    
+    checkBanner(); // Verificar imediatamente
+    
+    const interval = setInterval(checkBanner, 120000); // Verificar a cada 2 minutos
+
+    return () => clearInterval(interval);
+  }, [user?.lastContributionDate]);
+
+  const handleCopyPix = async () => {
+    try {
+      await navigator.clipboard.writeText('61992459777');
+      alert('PIX copiado! Chave: 61992459777');
+    } catch (err) {
+      alert('Chave PIX: 61992459777\n(Copie manualmente)');
+    }
+  };
 
   return (
     <div className="flex h-screen bg-slate-50">
@@ -68,6 +109,29 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLo
 
       {/* Main Content */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Support Banner - Desktop Only */}
+        {showSupportBanner && (
+          <div className="hidden md:block bg-gradient-to-r from-indigo-600 to-violet-700 text-white px-8 py-3 border-b border-indigo-500">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <Heart size={18} className="text-pink-300" />
+                <p className="text-sm">
+                  <span className="font-semibold">Ajude a manter o Kako Fin no ar!</span> Sua contribuição é de suma importância para a manutenção do app. 
+                  PIX: <span className="font-bold bg-white/20 px-2 py-0.5 rounded cursor-pointer hover:bg-white/30 transition-all" onClick={handleCopyPix}>61992459777</span>
+                  <span className="text-xs ml-2 opacity-90">(Não é obrigatório, mas ajuda muito!)</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSupportBanner(false)}
+                className="text-white/80 hover:text-white transition-colors p-1"
+                title="Fechar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+        )}
+
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
           <h2 className="text-lg font-semibold text-slate-800">
             {menuItems.find(i => i.id === activeTab)?.label}

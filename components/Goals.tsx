@@ -1,31 +1,84 @@
 
 import React, { useState } from 'react';
-import { Plus, Target, Trash2, Share2 } from 'lucide-react';
+import { Plus, Target, Trash2, Share2, Edit2 } from 'lucide-react';
 import { Goal } from '../types';
 
 interface GoalsProps {
   goals: Goal[];
   onAdd: (goal: Omit<Goal, 'id'>) => void;
+  onUpdate: (id: string, goal: Omit<Goal, 'id'>) => void;
   onDelete: (id: string) => void;
   onUpdateProgress: (id: string, amount: number) => void;
 }
 
-const Goals: React.FC<GoalsProps> = ({ goals, onAdd, onDelete, onUpdateProgress }) => {
+const Goals: React.FC<GoalsProps> = ({ goals, onAdd, onUpdate, onDelete, onUpdateProgress }) => {
   const [showModal, setShowModal] = useState(false);
+  const [showAddEconomyModal, setShowAddEconomyModal] = useState(false);
+  const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
+  const [selectedGoal, setSelectedGoal] = useState<Goal | null>(null);
+  const [economyAmount, setEconomyAmount] = useState('');
   const [name, setName] = useState('');
   const [target, setTarget] = useState('');
   const [deadline, setDeadline] = useState('');
 
+  const resetForm = () => {
+    setName('');
+    setTarget('');
+    setDeadline('');
+    setEditingGoal(null);
+  };
+
+  const handleOpenModal = (goal?: Goal) => {
+    if (goal) {
+      setEditingGoal(goal);
+      setName(goal.name);
+      setTarget(goal.targetAmount.toString());
+      setDeadline(goal.deadline);
+    } else {
+      resetForm();
+    }
+    setShowModal(true);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !target) return;
-    onAdd({
+    
+    const goalData = {
       name,
       targetAmount: parseFloat(target),
-      currentAmount: 0,
+      currentAmount: editingGoal ? editingGoal.currentAmount : 0,
       deadline
-    });
-    setName(''); setTarget(''); setDeadline(''); setShowModal(false);
+    };
+
+    if (editingGoal) {
+      onUpdate(editingGoal.id, goalData);
+    } else {
+      onAdd(goalData);
+    }
+    
+    resetForm();
+    setShowModal(false);
+  };
+
+  const handleOpenAddEconomy = (goal: Goal) => {
+    setSelectedGoal(goal);
+    setEconomyAmount('');
+    setShowAddEconomyModal(true);
+  };
+
+  const handleAddEconomySubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedGoal || !economyAmount) return;
+    const amount = parseFloat(economyAmount);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Por favor, insira um valor válido maior que zero.');
+      return;
+    }
+    onUpdateProgress(selectedGoal.id, amount);
+    setEconomyAmount('');
+    setShowAddEconomyModal(false);
+    setSelectedGoal(null);
   };
 
   const handleShareGoal = (goal: Goal) => {
@@ -57,7 +110,7 @@ https://kako-fin.vercel.app/
       <div className="flex justify-between items-center">
         <h3 className="text-xl font-bold text-slate-800">Suas Metas Financeiras</h3>
         <button 
-          onClick={() => setShowModal(true)}
+          onClick={() => handleOpenModal()}
           className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all font-semibold shadow-lg shadow-indigo-100"
         >
           <Plus size={20} />
@@ -77,6 +130,13 @@ https://kako-fin.vercel.app/
                   title="Compartilhar via WhatsApp"
                 >
                   <Share2 size={18} />
+                </button>
+                <button 
+                  onClick={() => handleOpenModal(goal)}
+                  className="text-slate-300 hover:text-indigo-600 opacity-0 group-hover:opacity-100 transition-all"
+                  title="Editar meta"
+                >
+                  <Edit2 size={18} />
                 </button>
                 <button 
                   onClick={() => onDelete(goal.id)}
@@ -105,10 +165,7 @@ https://kako-fin.vercel.app/
 
               <div className="flex gap-2">
                 <button 
-                  onClick={() => {
-                    const add = prompt('Quanto você deseja adicionar a esta meta?');
-                    if (add) onUpdateProgress(goal.id, parseFloat(add));
-                  }}
+                  onClick={() => handleOpenAddEconomy(goal)}
                   className="flex-1 text-xs font-bold py-2 px-4 bg-slate-50 text-slate-700 border border-slate-200 rounded-lg hover:bg-white hover:border-indigo-200 transition-all"
                 >
                   Adicionar Economia
@@ -137,7 +194,9 @@ https://kako-fin.vercel.app/
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
             <div className="p-6 border-b border-slate-100">
-              <h3 className="text-xl font-bold text-slate-800">Cadastrar Meta</h3>
+              <h3 className="text-xl font-bold text-slate-800">
+                {editingGoal ? 'Editar Meta' : 'Cadastrar Meta'}
+              </h3>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
               <div>
@@ -170,8 +229,66 @@ https://kako-fin.vercel.app/
                 />
               </div>
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setShowModal(false)} className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl">Cancelar</button>
-                <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 rounded-xl">Criar Meta</button>
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    resetForm();
+                    setShowModal(false);
+                  }} 
+                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 py-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 rounded-xl"
+                >
+                  {editingGoal ? 'Atualizar' : 'Criar Meta'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {showAddEconomyModal && selectedGoal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-slate-800">Adicionar Economia</h3>
+            </div>
+            <form onSubmit={handleAddEconomySubmit} className="p-6 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Valor a Adicionar (R$)</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  value={economyAmount}
+                  onChange={(e) => setEconomyAmount(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
+                  placeholder="0,00"
+                  required
+                  min="0.01"
+                />
+              </div>
+              <div className="flex gap-3 pt-4">
+                <button 
+                  type="button" 
+                  onClick={() => {
+                    setShowAddEconomyModal(false);
+                    setSelectedGoal(null);
+                    setEconomyAmount('');
+                  }} 
+                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="submit" 
+                  className="flex-1 py-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 rounded-xl"
+                >
+                  Adicionar
+                </button>
               </div>
             </form>
           </div>
