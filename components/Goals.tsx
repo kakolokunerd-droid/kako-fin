@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Plus, Target, Trash2 } from 'lucide-react';
+import { Plus, Target, Trash2, Share2 } from 'lucide-react';
 import { Goal } from '../types';
 
 interface GoalsProps {
@@ -28,6 +28,30 @@ const Goals: React.FC<GoalsProps> = ({ goals, onAdd, onDelete, onUpdateProgress 
     setName(''); setTarget(''); setDeadline(''); setShowModal(false);
   };
 
+  const handleShareGoal = (goal: Goal) => {
+    const progress = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
+    const deadlineFormatted = new Date(goal.deadline).toLocaleDateString('pt-BR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric'
+    });
+
+    const message = `🎯 *Estou trabalhando na minha meta: ${goal.name}*
+
+💰 Progresso: R$ ${goal.currentAmount.toLocaleString('pt-BR')} de R$ ${goal.targetAmount.toLocaleString('pt-BR')} (${progress.toFixed(0)}%)
+📅 Prazo: ${deadlineFormatted}
+
+💡 Que tal você também criar suas próprias metas financeiras? 
+
+📱 Baixe o Kako Fin e comece a planejar seus sonhos hoje mesmo:
+https://kako-fin.vercel.app/
+
+✨ Vamos juntos rumo à liberdade financeira!`;
+
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -46,12 +70,22 @@ const Goals: React.FC<GoalsProps> = ({ goals, onAdd, onDelete, onUpdateProgress 
           const progress = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
           return (
             <div key={goal.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative group">
-              <button 
-                onClick={() => onDelete(goal.id)}
-                className="absolute top-4 right-4 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
-              >
-                <Trash2 size={18} />
-              </button>
+              <div className="absolute top-4 right-4 flex gap-2">
+                <button 
+                  onClick={() => handleShareGoal(goal)}
+                  className="text-slate-300 hover:text-green-500 opacity-0 group-hover:opacity-100 transition-all"
+                  title="Compartilhar via WhatsApp"
+                >
+                  <Share2 size={18} />
+                </button>
+                <button 
+                  onClick={() => onDelete(goal.id)}
+                  className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all"
+                  title="Excluir meta"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
               <div className="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-xl flex items-center justify-center mb-4">
                 <Target size={24} />
               </div>
@@ -78,6 +112,13 @@ const Goals: React.FC<GoalsProps> = ({ goals, onAdd, onDelete, onUpdateProgress 
                   className="flex-1 text-xs font-bold py-2 px-4 bg-slate-50 text-slate-700 border border-slate-200 rounded-lg hover:bg-white hover:border-indigo-200 transition-all"
                 >
                   Adicionar Economia
+                </button>
+                <button 
+                  onClick={() => handleShareGoal(goal)}
+                  className="px-3 py-2 bg-green-50 text-green-600 border border-green-200 rounded-lg hover:bg-green-100 transition-all flex items-center justify-center"
+                  title="Compartilhar via WhatsApp"
+                >
+                  <Share2 size={16} />
                 </button>
               </div>
             </div>

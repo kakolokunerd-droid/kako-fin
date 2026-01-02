@@ -100,10 +100,10 @@ class CloudDatabase {
     try {
       const tableName = key === "transactions" ? "transactions" : "goals";
 
-      // Primeiro, buscar dados existentes
+      // Primeiro, buscar dados existentes COMPLETOS (não só IDs)
       const { data: existingData, error: fetchError } = await supabase
         .from(tableName)
-        .select("id")
+        .select("*")
         .eq("user_id", userId);
 
       if (fetchError) {
@@ -118,6 +118,13 @@ class CloudDatabase {
         });
         console.log(`💾 Fazendo fallback para localStorage...`);
         return this.saveDataLocalStorage<T>(key, userId, data);
+      }
+
+      // Se o array local está vazio mas há dados no banco, não fazer nada
+      // Isso evita deletar dados quando ainda não carregou
+      if (data.length === 0 && existingData && existingData.length > 0) {
+        console.log(`⚠️ Array local de ${key} está vazio, mas há ${existingData.length} itens no banco. Pulando salvamento para evitar perda de dados.`);
+        return;
       }
 
       const existingIds = new Set((existingData || []).map((d: any) => d.id));
@@ -182,23 +189,41 @@ class CloudDatabase {
       }
 
       // Remover itens que não estão mais na lista
-      const currentIds = new Set(data.map((d: any) => d.id));
-      const idsToDelete = Array.from(existingIds).filter(
-        (id) => !currentIds.has(id)
-      );
+      // IMPORTANTE: Só deletar se o array local não estiver vazio
+      // Um array vazio pode indicar que os dados ainda não foram carregados
+      // e não devemos deletar dados do banco nesse caso
+      if (data.length > 0) {
+        const currentIds = new Set(data.map((d: any) => d.id));
+        const idsToDelete = Array.from(existingIds).filter(
+          (id) => !currentIds.has(id)
+        );
 
-      if (idsToDelete.length > 0) {
-        const { error: deleteError } = await supabase
-          .from(tableName)
-          .delete()
-          .eq("user_id", userId)
-          .in("id", idsToDelete);
+        if (idsToDelete.length > 0) {
+          console.log(`⚠️ Tentando deletar ${idsToDelete.length} itens de ${key} que não estão mais na lista local`);
+          
+          // Validação adicional: só deletar se não for uma quantidade suspeita
+          // Se estiver tentando deletar mais de 50% dos dados existentes, pode ser um erro
+          const deleteRatio = idsToDelete.length / existingIds.size;
+          if (deleteRatio > 0.5 && existingIds.size > 5) {
+            console.warn(`⚠️ ATENÇÃO: Tentativa de deletar ${(deleteRatio * 100).toFixed(0)}% dos dados (${idsToDelete.length} de ${existingIds.size}). Operação cancelada por segurança.`);
+            console.warn(`⚠️ Isso pode indicar um problema de sincronização. Verifique se os dados foram carregados corretamente.`);
+            return;
+          }
 
-        if (deleteError) {
-          console.error(`❌ Erro ao deletar ${key}:`, deleteError);
-        } else {
-          console.log(`✅ ${idsToDelete.length} itens deletados de ${key}`);
+          const { error: deleteError } = await supabase
+            .from(tableName)
+            .delete()
+            .eq("user_id", userId)
+            .in("id", idsToDelete);
+
+          if (deleteError) {
+            console.error(`❌ Erro ao deletar ${key}:`, deleteError);
+          } else {
+            console.log(`✅ ${idsToDelete.length} itens deletados de ${key}`);
+          }
         }
+      } else {
+        console.log(`ℹ️ Array de ${key} está vazio. Pulando deleção para evitar perda acidental de dados.`);
       }
     } catch (error) {
       console.error(`Erro ao salvar ${key} no Supabase:`, error);

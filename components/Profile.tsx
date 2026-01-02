@@ -1,15 +1,16 @@
 
 import React, { useState, useRef } from 'react';
-import { User, Mail, Shield, Camera, Save, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
+import { User, Mail, Shield, Camera, Save, Lock, Eye, EyeOff, CheckCircle2, LogOut } from 'lucide-react';
 import { UserProfile } from '../types';
 
 interface ProfileProps {
   user: UserProfile;
   onUpdate: (updated: UserProfile) => void;
   onChangePassword: (oldP: string, newP: string) => Promise<boolean>;
+  onLogout?: () => void;
 }
 
-const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword }) => {
+const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onLogout }) => {
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [avatar, setAvatar] = useState(user.avatar || '');
@@ -164,6 +165,25 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword }) =
           </button>
         </form>
       </div>
+
+      {/* Logout Section */}
+      {onLogout && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-bold text-slate-800 flex items-center gap-2">
+              <Shield size={20} className="text-indigo-600" />
+              Sessão
+            </h4>
+          </div>
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center justify-center gap-3 px-4 py-3.5 bg-red-50 text-red-600 rounded-xl font-bold hover:bg-red-100 transition-all border border-red-200"
+          >
+            <LogOut size={20} />
+            <span>Sair da Conta</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 };

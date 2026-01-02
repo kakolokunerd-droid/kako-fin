@@ -24,16 +24,26 @@ const App: React.FC = () => {
   // App Data
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  
+  // Flag para evitar salvamento durante carregamento inicial
+  const [isLoadingData, setIsLoadingData] = useState(false);
+  const [hasLoadedData, setHasLoadedData] = useState(false);
 
   // Sincronização Inicial com o "Banco de Dados"
   useEffect(() => {
     if (auth.isAuthenticated && auth.user) {
       loadUserData(auth.user.email);
+    } else {
+      // Resetar flag quando deslogar
+      setHasLoadedData(false);
+      setTransactions([]);
+      setGoals([]);
     }
   }, [auth.isAuthenticated]);
 
   const loadUserData = async (userId: string) => {
     setIsLoading(true);
+    setIsLoadingData(true);
     try {
       const [tData, gData] = await Promise.all([
         db.getData<Transaction>('transactions', userId),
@@ -41,23 +51,28 @@ const App: React.FC = () => {
       ]);
       setTransactions(tData);
       setGoals(gData);
+      setHasLoadedData(true);
     } finally {
       setIsLoading(false);
+      // Aguardar um pouco antes de permitir salvamento para evitar race conditions
+      setTimeout(() => {
+        setIsLoadingData(false);
+      }, 500);
     }
   };
 
-  // Persistência Automática (Auto-Sync)
+  // Persistência Automática (Auto-Sync) - APENAS após carregar dados iniciais
   useEffect(() => {
-    if (auth.isAuthenticated && auth.user) {
+    if (auth.isAuthenticated && auth.user && hasLoadedData && !isLoadingData && transactions.length >= 0) {
       db.saveData('transactions', auth.user.email, transactions);
     }
-  }, [transactions]);
+  }, [transactions, auth.isAuthenticated, hasLoadedData, isLoadingData]);
 
   useEffect(() => {
-    if (auth.isAuthenticated && auth.user) {
+    if (auth.isAuthenticated && auth.user && hasLoadedData && !isLoadingData && goals.length >= 0) {
       db.saveData('goals', auth.user.email, goals);
     }
-  }, [goals]);
+  }, [goals, auth.isAuthenticated, hasLoadedData, isLoadingData]);
 
   useEffect(() => {
     localStorage.setItem('fintrack_auth', JSON.stringify(auth));
@@ -242,7 +257,7 @@ const App: React.FC = () => {
         {activeTab === 'transactions' && <Transactions transactions={transactions} onAdd={addTransaction} onDelete={deleteTransaction} />}
         {activeTab === 'goals' && <Goals goals={goals} onAdd={addGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />}
         {activeTab === 'reports' && <Reports transactions={transactions} />}
-        {activeTab === 'profile' && <Profile user={auth.user!} onUpdate={updateUserProfile} onChangePassword={changePassword} />}
+        {activeTab === 'profile' && <Profile user={auth.user!} onUpdate={updateUserProfile} onChangePassword={changePassword} onLogout={handleLogout} />}
       </div>
     </Layout>
   );

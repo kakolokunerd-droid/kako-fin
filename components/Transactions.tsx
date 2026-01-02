@@ -110,21 +110,24 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
               <h3 className="text-xl font-bold text-slate-800">Nova Transação</h3>
             </div>
             <form onSubmit={handleSubmit} className="p-6 space-y-4">
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl mb-4">
-                <button 
-                  type="button"
-                  onClick={() => setType('expense')}
-                  className={`py-2 text-sm font-bold rounded-lg transition-all ${type === 'expense' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}
-                >
-                  Gasto
-                </button>
-                <button 
-                  type="button"
-                  onClick={() => setType('income')}
-                  className={`py-2 text-sm font-bold rounded-lg transition-all ${type === 'income' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500'}`}
-                >
-                  Receita
-                </button>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tipo</label>
+                <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-xl">
+                  <button 
+                    type="button"
+                    onClick={() => setType('expense')}
+                    className={`py-2.5 text-sm font-bold rounded-lg transition-all ${type === 'expense' ? 'bg-white text-red-600 shadow-sm' : 'text-slate-500'}`}
+                  >
+                    Gasto
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setType('income')}
+                    className={`py-2.5 text-sm font-bold rounded-lg transition-all ${type === 'income' ? 'bg-white text-green-600 shadow-sm' : 'text-slate-500'}`}
+                  >
+                    Receita
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -133,35 +136,34 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
                   type="text" 
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
                   placeholder="Ex: Supermercado, Aluguel..."
                   required
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Valor (R$)</label>
-                  <input 
-                    type="number" 
-                    step="0.01"
-                    value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
-                    placeholder="0,00"
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data</label>
-                  <input 
-                    type="date" 
-                    value={date}
-                    onChange={(e) => setDate(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none" 
-                    required
-                  />
-                </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Valor (R$)</label>
+                <input 
+                  type="number" 
+                  step="0.01"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
+                  placeholder="0,00"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Data</label>
+                <input 
+                  type="date" 
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" 
+                  required
+                />
               </div>
 
               <div>
@@ -169,7 +171,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
                 <select 
                   value={category}
                   onChange={(e) => setCategory(e.target.value as Category)}
-                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   {Object.values(Category).map(cat => (
                     <option key={cat} value={cat}>{cat}</option>
@@ -181,13 +183,13 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onDele
                 <button 
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl transition-all"
+                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
                 >
                   Cancelar
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 rounded-xl shadow-lg shadow-indigo-200 transition-all"
+                  className="flex-1 py-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 rounded-xl"
                 >
                   Salvar
                 </button>
