@@ -57,3 +57,13 @@ export interface ShoppingItem {
   installments?: number; // Apenas para compras parceladas
   category: string;
 }
+
+export interface Notification {
+  id: string;
+  title: string;
+  message: string;
+  createdBy: string; // Email do admin que criou
+  createdAt: string;
+  isRead: boolean;
+  readAt?: string;
+}

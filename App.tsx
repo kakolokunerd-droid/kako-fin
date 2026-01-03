@@ -8,6 +8,7 @@ import Reports from './components/Reports';
 import Profile from './components/Profile';
 import Admin from './components/Admin';
 import Shopping from './components/Shopping';
+import Notifications from './components/Notifications';
 import { ToastContainer, useToast } from './components/Toast';
 import { db } from './services/db';
 import { AuthState, Transaction, Goal, UserProfile, Category, ShoppingItem } from './types';
@@ -601,6 +602,7 @@ const App: React.FC = () => {
         {activeTab === 'shopping' && <Shopping shoppingItems={shoppingItems} onAdd={addShoppingItem} onUpdate={updateShoppingItem} onDelete={deleteShoppingItem} onAddToTransactions={addShoppingToTransactions} showToast={showToast} />}
         {activeTab === 'goals' && <Goals goals={goals} onAdd={addGoal} onUpdate={updateGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />}
         {activeTab === 'reports' && <Reports transactions={transactions} goals={goals} />}
+        {activeTab === 'notifications' && <Notifications userEmail={auth.user!.email} />}
         {activeTab === 'profile' && <Profile user={auth.user!} onUpdate={updateUserProfile} onChangePassword={changePassword} onLogout={handleLogout} />}
         {activeTab === 'admin' && auth.user && auth.user.role === 'admin' && <Admin userEmail={auth.user.email} />}
         </div>

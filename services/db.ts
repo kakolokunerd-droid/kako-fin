@@ -1,19 +1,30 @@
-import { Transaction, Goal, UserProfile } from "../types";
+import { Transaction, Goal, UserProfile, Notification } from "../types";
 import { supabase } from "./supabaseClient";
 
 class CloudDatabase {
+  // Cache para evitar verificação repetida
+  private supabaseConfiguredCache: boolean | null = null;
+
   // Verifica se o Supabase está configurado
   private isSupabaseConfigured(): boolean {
+    // Usar cache se já foi verificado
+    if (this.supabaseConfiguredCache !== null) {
+      return this.supabaseConfiguredCache;
+    }
+
     const url = import.meta.env.VITE_SUPABASE_URL;
     const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
     const isConfigured = !!(url && key && url !== "" && key !== "");
 
+    // Log apenas na primeira verificação
     if (isConfigured) {
       console.log("🔍 Supabase detectado - usando banco de dados remoto");
     } else {
       console.log("💾 Supabase não configurado - usando localStorage");
     }
 
+    // Armazenar no cache
+    this.supabaseConfiguredCache = isConfigured;
     return isConfigured;
   }
 
@@ -586,6 +597,354 @@ class CloudDatabase {
         console.error("Erro ao salvar senha no Supabase:", error);
       }
     }
+  }
+
+  // ========== NOTIFICAÇÕES ==========
+  
+  async getNotifications(userId: string): Promise<Notification[]> {
+    // Buscar do localStorage (pode ter notificações globais ou específicas do usuário)
+    const userNotifications = await this.getDataLocalStorage<Notification>("notifications", userId);
+    const globalNotifications = await this.getDataLocalStorage<Notification>("notifications", "global");
+    
+    // Garantir que são arrays
+    const userNotifs = Array.isArray(userNotifications) ? userNotifications : [];
+    const globalNotifs = Array.isArray(globalNotifications) ? globalNotifications : [];
+    
+    // Combinar notificações do usuário e globais
+    const allLocalNotifications = [...userNotifs, ...globalNotifs];
+    
+    if (!this.isSupabaseConfigured()) {
+      return allLocalNotifications;
+    }
+
+    try {
+      // Buscar todas as notificações
+      const { data: notificationsData, error: notificationsError } = await supabase
+        .from("notifications")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (notificationsError) {
+        console.error("❌ Erro ao buscar notificações do Supabase:", notificationsError);
+        console.log("💾 Usando notificações do localStorage...");
+        return allLocalNotifications;
+      }
+
+      // Log apenas se houver notificações ou se for a primeira vez
+      if (notificationsData && notificationsData.length > 0) {
+        console.log("📬 Notificações encontradas no Supabase:", notificationsData.length);
+      }
+
+      if (!notificationsData || notificationsData.length === 0) {
+        return allLocalNotifications;
+      }
+
+      // Buscar quais notificações este usuário já leu e quais foram deletadas (pode falhar se a tabela não existir)
+      let readNotificationIds = new Set<string>();
+      let readNotificationsMap = new Map<string, string>();
+      let deletedNotificationIds = new Set<string>();
+      
+      try {
+        const { data: readsData, error: readsError } = await supabase
+          .from("notification_reads")
+          .select("notification_id, read_at, deleted_at")
+          .eq("user_id", userId);
+
+        if (readsError) {
+          console.warn("⚠️ Tabela notification_reads não encontrada ou erro ao buscar:", readsError);
+          console.log("📝 Continuando sem verificar leituras...");
+        } else {
+          // Separar notificações lidas e deletadas
+          const reads = readsData || [];
+          readNotificationIds = new Set(
+            reads
+              .filter(r => r.read_at && !r.deleted_at) // Apenas as que foram lidas e não foram deletadas
+              .map(r => r.notification_id)
+          );
+
+          readNotificationsMap = new Map(
+            reads
+              .filter(r => r.read_at && !r.deleted_at)
+              .map(r => [r.notification_id, r.read_at])
+          );
+
+          // Notificações deletadas pelo usuário
+          deletedNotificationIds = new Set(
+            reads
+              .filter(r => r.deleted_at) // Apenas as que foram deletadas
+              .map(r => r.notification_id)
+          );
+        }
+      } catch (readsError) {
+        console.warn("⚠️ Erro ao buscar leituras de notificações:", readsError);
+      }
+
+      // Mapear notificações com status de leitura do usuário e filtrar deletadas
+      const supabaseNotifications = (notificationsData as any[])
+        .filter(n => !deletedNotificationIds.has(n.id)) // Filtrar notificações deletadas pelo usuário
+        .map((n) => {
+          const isRead = readNotificationIds.has(n.id);
+          return {
+            id: n.id,
+            title: n.title,
+            message: n.message,
+            createdBy: n.created_by,
+            createdAt: n.created_at,
+            isRead: isRead,
+            readAt: isRead ? readNotificationsMap.get(n.id) : undefined,
+          } as Notification;
+        });
+
+      // Combinar notificações do Supabase com as do localStorage
+      const combined = [...supabaseNotifications, ...allLocalNotifications];
+      // Remover duplicatas baseado no ID (priorizar Supabase)
+      const uniqueMap = new Map<string, Notification>();
+      // Primeiro adicionar do localStorage
+      allLocalNotifications.forEach(n => {
+        if (!uniqueMap.has(n.id)) {
+          uniqueMap.set(n.id, n);
+        }
+      });
+      // Depois adicionar do Supabase (sobrescreve se existir)
+      supabaseNotifications.forEach(n => {
+        uniqueMap.set(n.id, n);
+      });
+      
+      return Array.from(uniqueMap.values());
+    } catch (error) {
+      console.error("Erro ao buscar notificações do Supabase:", error);
+      console.log("💾 Usando notificações do localStorage...");
+      return allLocalNotifications;
+    }
+  }
+
+  async createNotification(notification: Omit<Notification, 'id' | 'isRead' | 'readAt'>): Promise<void> {
+    // Função auxiliar para criar no localStorage
+    const createInLocalStorage = async () => {
+      const allUsers = this.getAllUserIds();
+      const notificationId = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const newNotification: Notification = {
+        id: notificationId,
+        ...notification,
+        isRead: false,
+      };
+      
+      // Se não houver usuários, criar uma notificação global que será compartilhada
+      if (allUsers.length === 0) {
+        // Criar uma chave global para notificações
+        const globalNotifications = await this.getDataLocalStorage<Notification>("notifications", "global");
+        const globalNotifs = Array.isArray(globalNotifications) ? globalNotifications : [];
+        globalNotifs.unshift(newNotification);
+        await this.saveDataLocalStorage("notifications", "global", globalNotifs);
+      } else {
+        // Criar para cada usuário
+        for (const userId of allUsers) {
+          const notifications = await this.getDataLocalStorage<Notification>("notifications", userId);
+          const userNotifs = Array.isArray(notifications) ? notifications : [];
+          userNotifs.unshift(newNotification);
+          await this.saveDataLocalStorage("notifications", userId, userNotifs);
+        }
+      }
+    };
+
+    if (!this.isSupabaseConfigured()) {
+      await createInLocalStorage();
+      return;
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from("notifications")
+        .insert({
+          title: notification.title,
+          message: notification.message,
+          created_by: notification.createdBy,
+          created_at: notification.createdAt,
+          is_read: false,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error("❌ Erro ao criar notificação no Supabase:", error);
+        console.log("💾 Fazendo fallback para localStorage...");
+        // Fazer fallback para localStorage se houver erro
+        await createInLocalStorage();
+        return;
+      }
+
+      console.log("✅ Notificação criada no Supabase:", data);
+
+      // Também criar no localStorage para garantir que apareça imediatamente
+      // Usar o ID do Supabase se disponível
+      const notificationId = data?.id || `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const allUsers = this.getAllUserIds();
+      const newNotification: Notification = {
+        id: notificationId,
+        ...notification,
+        isRead: false,
+      };
+      
+      if (allUsers.length === 0) {
+        // Criar notificação global
+        const globalNotifications = await this.getDataLocalStorage<Notification>("notifications", "global");
+        const globalNotifs = Array.isArray(globalNotifications) ? globalNotifications : [];
+        globalNotifs.unshift(newNotification);
+        await this.saveDataLocalStorage("notifications", "global", globalNotifs);
+      } else {
+        // Criar para cada usuário
+        for (const userId of allUsers) {
+          const notifications = await this.getDataLocalStorage<Notification>("notifications", userId);
+          const userNotifs = Array.isArray(notifications) ? notifications : [];
+          userNotifs.unshift(newNotification);
+          await this.saveDataLocalStorage("notifications", userId, userNotifs);
+        }
+      }
+    } catch (error) {
+      console.error("Erro ao criar notificação no Supabase:", error);
+      console.log("💾 Fazendo fallback para localStorage...");
+      // Fazer fallback para localStorage se houver erro
+      await createInLocalStorage();
+    }
+  }
+
+  async markNotificationAsRead(userId: string, notificationId: string): Promise<void> {
+    // Sempre salvar no localStorage também
+    const notifications = await this.getDataLocalStorage<Notification>("notifications", userId);
+    const globalNotifications = await this.getDataLocalStorage<Notification>("notifications", "global");
+    
+    // Garantir que são arrays
+    const userNotifs = Array.isArray(notifications) ? notifications : [];
+    const globalNotifs = Array.isArray(globalNotifications) ? globalNotifications : [];
+    
+    // Atualizar no localStorage do usuário
+    const updatedUser = userNotifs.map(n => 
+      n.id === notificationId 
+        ? { ...n, isRead: true, readAt: new Date().toISOString() }
+        : n
+    );
+    await this.saveDataLocalStorage("notifications", userId, updatedUser);
+    
+    // Atualizar nas notificações globais também
+    const updatedGlobal = globalNotifs.map(n => 
+      n.id === notificationId 
+        ? { ...n, isRead: true, readAt: new Date().toISOString() }
+        : n
+    );
+    await this.saveDataLocalStorage("notifications", "global", updatedGlobal);
+
+    if (!this.isSupabaseConfigured()) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("notification_reads")
+        .upsert({
+          notification_id: notificationId,
+          user_id: userId,
+          read_at: new Date().toISOString(),
+        }, {
+          onConflict: 'notification_id,user_id'
+        });
+
+      if (error) {
+        console.warn("⚠️ Erro ao marcar notificação como lida no Supabase (tabela pode não existir):", error);
+        console.log("💾 Notificação marcada como lida no localStorage");
+        // Não lançar erro, já salvamos no localStorage
+        return;
+      }
+
+      console.log("✅ Notificação marcada como lida no Supabase");
+    } catch (error) {
+      console.warn("⚠️ Erro ao marcar notificação como lida:", error);
+      console.log("💾 Notificação marcada como lida no localStorage");
+      // Não lançar erro, já salvamos no localStorage
+    }
+  }
+
+  async deleteNotification(userId: string, notificationId: string): Promise<void> {
+    if (!this.isSupabaseConfigured()) {
+      const notifications = await this.getDataLocalStorage<Notification>("notifications", userId);
+      const globalNotifications = await this.getDataLocalStorage<Notification>("notifications", "global");
+      
+      const userNotifs = Array.isArray(notifications) ? notifications : [];
+      const globalNotifs = Array.isArray(globalNotifications) ? globalNotifications : [];
+      
+      // Remover das notificações do usuário
+      const filteredUser = userNotifs.filter(n => n.id !== notificationId);
+      await this.saveDataLocalStorage("notifications", userId, filteredUser);
+      
+      // Remover das notificações globais também
+      const filteredGlobal = globalNotifs.filter(n => n.id !== notificationId);
+      await this.saveDataLocalStorage("notifications", "global", filteredGlobal);
+      return;
+    }
+
+    try {
+      // No Supabase, marcar como deletada para o usuário específico na tabela notification_reads
+      const { error } = await supabase
+        .from("notification_reads")
+        .upsert({
+          notification_id: notificationId,
+          user_id: userId,
+          deleted_at: new Date().toISOString(),
+        }, {
+          onConflict: 'notification_id,user_id'
+        });
+
+      if (error) {
+        console.warn("⚠️ Erro ao excluir notificação no Supabase (tabela pode não existir):", error);
+        console.log("💾 Notificação excluída do localStorage");
+        // Não lançar erro, já salvamos no localStorage
+        return;
+      }
+
+      console.log("✅ Notificação excluída no Supabase");
+    } catch (error) {
+      console.warn("⚠️ Erro ao excluir notificação:", error);
+      console.log("💾 Notificação excluída do localStorage");
+      // Não lançar erro, já salvamos no localStorage
+    }
+  }
+
+  private getAllUserIds(): string[] {
+    // Buscar todos os IDs de usuários do localStorage
+    const userIds: string[] = [];
+    const seen = new Set<string>();
+    
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('fintrack_')) {
+        // Extrair userId de diferentes formatos de chave
+        let userId = '';
+        
+        // Formato: fintrack_{userId}_transactions
+        if (key.includes('_transactions')) {
+          userId = key.replace('fintrack_', '').replace('_transactions', '');
+        }
+        // Formato: fintrack_{userId}_goals
+        else if (key.includes('_goals')) {
+          userId = key.replace('fintrack_', '').replace('_goals', '');
+        }
+        // Formato: fintrack_{userId}_shopping
+        else if (key.includes('_shopping')) {
+          userId = key.replace('fintrack_', '').replace('_shopping', '');
+        }
+        // Formato: fintrack_profile_{userId}
+        else if (key.includes('_profile_')) {
+          userId = key.replace('fintrack_profile_', '');
+        }
+        
+        if (userId && !seen.has(userId) && userId !== 'global') {
+          seen.add(userId);
+          userIds.push(userId);
+        }
+      }
+    }
+    
+    console.log('👥 Usuários encontrados no localStorage:', userIds.length, userIds);
+    return userIds;
   }
 }
 

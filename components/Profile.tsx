@@ -22,8 +22,10 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const [showNewPass, setShowNewPass] = useState(false);
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState(false);
+  const [showSecurityModal, setShowSecurityModal] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +74,13 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
+      setShowPass(false);
+      setShowNewPass(false);
+      setPassError('');
+      // Fechar o modal após sucesso
+      setTimeout(() => {
+        setShowSecurityModal(false);
+      }, 500);
     } else {
       setPassError('Senha atual incorreta.');
     }
@@ -143,6 +152,33 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
         </div>
       </div>
 
+      {/* Contribution Status Section - Primeiro */}
+      {user.lastContributionDate && (
+        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <h4 className="font-bold text-slate-800 flex items-center gap-2">
+              <Heart size={20} className="text-pink-500" />
+              Status de Contribuição
+            </h4>
+          </div>
+          <div className="space-y-3">
+            <div className="p-3 bg-green-50 text-green-700 rounded-xl text-sm">
+              <p className="font-semibold mb-1">✅ Obrigado pela sua contribuição!</p>
+              <p className="text-xs">
+                Última contribuição: {new Date(user.lastContributionDate).toLocaleDateString('pt-BR', {
+                  day: '2-digit',
+                  month: 'long',
+                  year: 'numeric'
+                })}
+              </p>
+            </div>
+            <p className="text-xs text-slate-500">
+              A mensagem de apoio será ocultada por 30 dias após sua contribuição.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <form onSubmit={handleGeneralUpdate} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
           <h4 className="font-bold text-slate-800 flex items-center gap-2">
@@ -186,67 +222,32 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
           </button>
         </form>
 
-        <form onSubmit={handlePasswordUpdate} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+        {/* Botão para abrir modal de segurança */}
+        <div className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
           <h4 className="font-bold text-slate-800 flex items-center gap-2">
             <Shield size={20} className="text-indigo-600" />
             Segurança
           </h4>
-
-          {passError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl font-medium">{passError}</div>}
-          {passSuccess && <div className="p-3 bg-green-50 text-green-600 text-sm rounded-xl font-medium flex items-center gap-2"><CheckCircle2 size={16} /> Senha alterada com sucesso!</div>}
-
-          <div className="space-y-4">
-            <div className="relative">
-              <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Senha Atual</label>
-              <input type={showPass ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
-              <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-4 bottom-3.5 text-slate-400 hover:text-indigo-600">
-                {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
+          {passSuccess && (
+            <div className="p-3 bg-green-50 text-green-600 text-sm rounded-xl font-medium flex items-center gap-2">
+              <CheckCircle2 size={16} /> Senha alterada com sucesso!
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nova Senha</label>
-                <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-              <div>
-                <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Confirme</label>
-                <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
-            </div>
-          </div>
-
-          <button type="submit" className="w-full bg-slate-800 text-white py-3.5 rounded-xl font-bold hover:bg-slate-900 transition-all">
-            Atualizar Senha
+          )}
+          <p className="text-sm text-slate-500">
+            Altere sua senha e configure as opções de segurança da sua conta.
+          </p>
+          <button
+            onClick={() => {
+              setShowSecurityModal(true);
+              setPassSuccess(false);
+            }}
+            className="w-full flex items-center justify-center gap-2 bg-slate-800 text-white py-3.5 rounded-xl font-bold hover:bg-slate-900 transition-all"
+          >
+            <Lock size={20} />
+            Alterar Senha
           </button>
-        </form>
-      </div>
-
-      {/* Contribution Status Section */}
-      {user.lastContributionDate && (
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h4 className="font-bold text-slate-800 flex items-center gap-2">
-              <Heart size={20} className="text-pink-500" />
-              Status de Contribuição
-            </h4>
-          </div>
-          <div className="space-y-3">
-            <div className="p-3 bg-green-50 text-green-700 rounded-xl text-sm">
-              <p className="font-semibold mb-1">✅ Obrigado pela sua contribuição!</p>
-              <p className="text-xs">
-                Última contribuição: {new Date(user.lastContributionDate).toLocaleDateString('pt-BR', {
-                  day: '2-digit',
-                  month: 'long',
-                  year: 'numeric'
-                })}
-              </p>
-            </div>
-            <p className="text-xs text-slate-500">
-              A mensagem de apoio será ocultada por 30 dias após sua contribuição.
-            </p>
-          </div>
         </div>
-      )}
+      </div>
 
       {/* Share App Section */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
@@ -273,7 +274,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">
             <h4 className="font-bold text-slate-800 flex items-center gap-2">
-              <Shield size={20} className="text-indigo-600" />
+              <LogOut size={20} className="text-indigo-600" />
               Sessão
             </h4>
           </div>
@@ -284,6 +285,74 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
             <LogOut size={20} />
             <span>Sair da Conta</span>
           </button>
+        </div>
+      )}
+
+      {/* Modal de Segurança */}
+      {showSecurityModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Shield size={20} className="text-indigo-600" />
+                Alterar Senha
+              </h3>
+            </div>
+            <form onSubmit={handlePasswordUpdate} className="p-6 space-y-4">
+              {passError && <div className="p-3 bg-red-50 text-red-600 text-sm rounded-xl font-medium">{passError}</div>}
+
+              <div className="space-y-4">
+                <div className="relative">
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Senha Atual</label>
+                  <input type={showPass ? 'text' : 'password'} value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-4 bottom-3.5 text-slate-400 hover:text-indigo-600">
+                    {showPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <div className="relative">
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Nova Senha</label>
+                  <input type={showNewPass ? 'text' : 'password'} value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
+                  <button type="button" onClick={() => setShowNewPass(!showNewPass)} className="absolute right-4 bottom-3.5 text-slate-400 hover:text-indigo-600">
+                    {showNewPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                <div className="relative">
+                  <label className="block text-xs font-bold text-slate-400 uppercase mb-1">Confirme a Nova Senha</label>
+                  <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className={`w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 ${confirmPassword && newPassword === confirmPassword ? 'border-green-500' : ''}`} />
+                  {confirmPassword && newPassword === confirmPassword && (
+                    <div className="absolute right-4 bottom-3.5 text-green-600">
+                      <CheckCircle2 size={18} />
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowSecurityModal(false);
+                    setCurrentPassword('');
+                    setNewPassword('');
+                    setConfirmPassword('');
+                    setShowPass(false);
+                    setShowNewPass(false);
+                    setPassError('');
+                    setPassSuccess(false);
+                  }}
+                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-3 bg-slate-800 text-white font-bold hover:bg-slate-900 rounded-xl"
+                >
+                  Atualizar Senha
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   LayoutDashboard,
   ArrowUpCircle,
@@ -13,8 +13,10 @@ import {
   Copy,
   Settings,
   ShoppingCart,
+  Bell,
 } from "lucide-react";
 import { UserProfile } from "../types";
+import { db } from "../services/db";
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -32,10 +34,54 @@ const Layout: React.FC<LayoutProps> = ({
   user,
 }) => {
   const [showSupportBanner, setShowSupportBanner] = useState(false);
+  const [unreadNotifications, setUnreadNotifications] = useState(0);
   const APP_VERSION = "1.0.0"; // Versão do app
+  const lastLoadTimeRef = useRef<number>(0);
+  const isLoadingRef = useRef<boolean>(false);
 
   // Verificar se é admin baseado no role
   const isAdmin = user?.role === "admin";
+
+  // Carregar contagem de notificações não lidas
+  const loadUnreadCount = useCallback(async () => {
+    if (!user?.email) return;
+
+    // Evitar chamadas simultâneas
+    if (isLoadingRef.current) {
+      return;
+    }
+
+    // Evitar chamadas muito frequentes (mínimo 5 minutos entre chamadas automáticas)
+    const now = Date.now();
+    const timeSinceLastLoad = now - lastLoadTimeRef.current;
+    if (timeSinceLastLoad > 0 && timeSinceLastLoad < 300000) {
+      return;
+    }
+
+    isLoadingRef.current = true;
+    lastLoadTimeRef.current = now;
+
+    try {
+      const notifications = await db.getNotifications(user.email);
+      const unread = notifications.filter(n => !n.isRead).length;
+      setUnreadNotifications(unread);
+    } catch (error) {
+      console.error('Erro ao carregar notificações:', error);
+    } finally {
+      isLoadingRef.current = false;
+    }
+  }, [user?.email]);
+
+  useEffect(() => {
+    if (user?.email) {
+      // Carregar imediatamente apenas quando o email do usuário mudar
+      loadUnreadCount();
+      
+      // Atualizar a cada 1 hora (3600000ms)
+      const interval = setInterval(loadUnreadCount, 3600000);
+      return () => clearInterval(interval);
+    }
+  }, [loadUnreadCount]);
 
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -43,6 +89,7 @@ const Layout: React.FC<LayoutProps> = ({
     { id: "shopping", label: "Compras", icon: ShoppingCart },
     { id: "goals", label: "Metas", icon: Target },
     { id: "reports", label: "Relatórios", icon: BarChart3 },
+    { id: "notifications", label: "Informações", icon: Bell, badge: unreadNotifications > 0 ? unreadNotifications : undefined },
     { id: "profile", label: "Perfil", icon: User },
     ...(isAdmin ? [{ id: "admin", label: "Admin", icon: Settings }] : []),
   ];
@@ -94,14 +141,21 @@ const Layout: React.FC<LayoutProps> = ({
             <button
               key={item.id}
               onClick={() => setActiveTab(item.id)}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
+              className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl transition-all ${
                 activeTab === item.id
                   ? "bg-indigo-700 text-white shadow-lg"
                   : "text-indigo-200 hover:bg-indigo-800 hover:text-white"
               }`}
             >
-              <item.icon size={20} />
-              <span className="font-medium">{item.label}</span>
+              <div className="flex items-center gap-3">
+                <item.icon size={20} />
+                <span className="font-medium">{item.label}</span>
+              </div>
+              {item.badge && item.badge > 0 && (
+                <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
+                  {item.badge > 99 ? '99+' : item.badge}
+                </span>
+              )}
             </button>
           ))}
         </nav>
@@ -204,21 +258,30 @@ const Layout: React.FC<LayoutProps> = ({
         </footer>
 
         {/* Mobile Nav */}
-        <nav className="md:hidden bg-white border-t border-slate-200 flex justify-around p-2">
-          {menuItems.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className={`p-2 rounded-lg flex flex-col items-center gap-1 ${
-                activeTab === item.id ? "text-indigo-600" : "text-slate-400"
-              }`}
-            >
-              <item.icon size={20} />
-              <span className="text-[10px] uppercase font-bold">
-                {item.label}
-              </span>
-            </button>
-          ))}
+        <nav className="md:hidden bg-white border-t border-slate-200 overflow-x-auto">
+          <div className="flex flex-nowrap px-2 py-2 min-w-max">
+            {menuItems.map((item) => (
+              <button
+                key={item.id}
+                onClick={() => setActiveTab(item.id)}
+                className={`min-w-[70px] p-2 rounded-lg flex flex-col items-center gap-1 flex-shrink-0 relative ${
+                  activeTab === item.id ? "text-indigo-600" : "text-slate-400"
+                }`}
+              >
+                <div className="relative">
+                  <item.icon size={20} />
+                  {item.badge && item.badge > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] uppercase font-bold whitespace-nowrap">
+                  {item.label}
+                </span>
+              </button>
+            ))}
+          </div>
         </nav>
       </main>
     </div>

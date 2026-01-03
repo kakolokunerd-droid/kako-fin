@@ -108,7 +108,7 @@ https://kako-fin.vercel.app/
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h3 className="text-xl font-bold text-slate-800">Suas Metas Financeiras</h3>
+        <h3 className="text-2xl font-bold text-slate-800">Metas Financeiras</h3>
         <button 
           onClick={() => handleOpenModal()}
           className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all font-semibold shadow-lg shadow-indigo-100"

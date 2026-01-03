@@ -254,17 +254,63 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
 
     // Converter para array com label do mês e ordenar meses
     const result = Object.entries(grouped).map(([monthKey, monthItems]) => {
-      // Obter label do mês a partir da primeira transação
-      const firstDate = new Date(monthItems[0].purchaseDate + 'T00:00:00');
-      const monthLabel = firstDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
-      return [monthLabel, monthItems] as [string, ShoppingItem[]];
+      // Extrair mês e ano da primeira transação
+      const [yearStr, monthStr] = monthItems[0].purchaseDate.split('-');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr); // 1-12
+      
+      // Criar label do mês usando Date apenas para formatação
+      const monthNames = [
+        'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+      ];
+      // Para exibição no card, usar apenas o nome do mês (capitalizado)
+      const monthLabel = monthNames[month - 1].charAt(0).toUpperCase() + monthNames[month - 1].slice(1);
+      // Para ordenação e outras operações, manter o label completo
+      const monthLabelFull = `${monthNames[month - 1]} de ${year}`;
+      
+      return [monthLabel, monthItems, monthLabelFull] as [string, ShoppingItem[], string];
     });
 
-    // Ordenar meses
+    // Ordenar meses (da mais atual para a mais futura)
+    const now = new Date();
+    const nowMonth = now.getMonth() + 1; // 1-12
+    const nowYear = now.getFullYear();
+    
     return result.sort((a, b) => {
-      const dateA = new Date(a[1][0].purchaseDate + 'T00:00:00');
-      const dateB = new Date(b[1][0].purchaseDate + 'T00:00:00');
-      return dateA.getTime() - dateB.getTime();
+      // Extrair mês e ano das primeiras transações de cada grupo
+      const [yearAStr, monthAStr] = a[1][0].purchaseDate.split('-');
+      const yearA = parseInt(yearAStr);
+      const monthA = parseInt(monthAStr); // 1-12
+      
+      const [yearBStr, monthBStr] = b[1][0].purchaseDate.split('-');
+      const yearB = parseInt(yearBStr);
+      const monthB = parseInt(monthBStr); // 1-12
+      
+      // Verificar se é mês atual
+      const isACurrent = yearA === nowYear && monthA === nowMonth;
+      const isBCurrent = yearB === nowYear && monthB === nowMonth;
+      
+      // Verificar se é futuro
+      const isAFuture = yearA > nowYear || (yearA === nowYear && monthA > nowMonth);
+      const isBFuture = yearB > nowYear || (yearB === nowYear && monthB > nowMonth);
+      
+      // Mês atual primeiro
+      if (isACurrent && !isBCurrent) return -1;
+      if (!isACurrent && isBCurrent) return 1;
+      
+      // Depois futuros (do mais próximo para o mais distante)
+      if (isAFuture && isBFuture) {
+        // Comparar por ano e mês
+        if (yearA !== yearB) return yearA - yearB;
+        return monthA - monthB;
+      }
+      if (isAFuture && !isBFuture) return -1;
+      if (!isAFuture && isBFuture) return 1;
+      
+      // Por último passados (do mais recente para o mais antigo)
+      if (yearA !== yearB) return yearB - yearA;
+      return monthB - monthA;
     });
   }, [shoppingItems]);
 
@@ -497,64 +543,54 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
         <h3 className="text-xl font-bold text-slate-800">Lista de Compras</h3>
-        <div className="flex gap-3">
-          {shoppingItems.length > 0 && (
+        <div className={`flex gap-2 sm:gap-3 w-full ${deleteSelectionMode ? 'justify-between' : 'sm:w-auto'}`}>
+          {deleteSelectionMode ? (
             <>
-              {deleteSelectionMode ? (
-                <>
-                  <button
-                    onClick={() => {
-                      if (itemsToDelete.size > 0) {
-                        setShowDeleteBulkModal(true);
-                      } else {
-                        showToast('Selecione pelo menos um item para excluir.', 'warning');
-                      }
-                    }}
-                    className="flex items-center gap-2 bg-red-600 text-white px-6 py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100"
-                    disabled={itemsToDelete.size === 0}
-                  >
-                    <Trash2 size={20} />
-                    Excluir Selecionados ({itemsToDelete.size})
-                  </button>
-                  <button
-                    onClick={() => {
-                      setDeleteSelectionMode(false);
-                      setItemsToDelete(new Set());
-                    }}
-                    className="flex items-center gap-2 bg-slate-600 text-white px-6 py-2.5 rounded-xl hover:bg-slate-700 transition-all font-semibold"
-                  >
-                    Cancelar Seleção
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => setDeleteSelectionMode(true)}
-                    className="flex items-center gap-2 bg-red-600 text-white px-6 py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100"
-                  >
-                    <Trash2 size={20} />
-                    Excluir em Lote
-                  </button>
-                  <button 
-                    onClick={handleShareShoppingList}
-                    className="flex items-center gap-2 bg-green-600 text-white px-6 py-2.5 rounded-xl hover:bg-green-700 transition-all font-semibold shadow-lg shadow-green-100"
-                  >
-                    <Share2 size={20} />
-                    Compartilhar
-                  </button>
-                </>
+              <button
+                onClick={() => {
+                  if (itemsToDelete.size > 0) {
+                    setShowDeleteBulkModal(true);
+                  } else {
+                    showToast('Selecione pelo menos um item para excluir.', 'warning');
+                  }
+                }}
+                className="flex items-center gap-1.5 sm:gap-2 bg-red-600 text-white px-3 sm:px-6 py-2 sm:py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={itemsToDelete.size === 0}
+              >
+                Excluir Selecionados ({itemsToDelete.size})
+              </button>
+              <button
+                onClick={() => {
+                  setDeleteSelectionMode(false);
+                  setItemsToDelete(new Set());
+                }}
+                className="flex items-center gap-1.5 sm:gap-2 bg-slate-600 text-white px-3 sm:px-6 py-2 sm:py-2.5 rounded-xl hover:bg-slate-700 transition-all font-semibold text-sm sm:text-base"
+              >
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <>
+              {shoppingItems.length > 0 && (
+                <button
+                  onClick={() => setDeleteSelectionMode(true)}
+                  className="flex items-center gap-1.5 sm:gap-2 bg-red-600 text-white px-3 sm:px-6 py-2 sm:py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100 text-sm sm:text-base"
+                >
+                  <Trash2 size={16} className="sm:w-5 sm:h-5" />
+                  Excluir
+                </button>
               )}
+              <button 
+                onClick={() => handleOpenModal()}
+                className={`flex items-center gap-1.5 sm:gap-2 bg-indigo-600 text-white px-3 sm:px-6 py-2 sm:py-2.5 rounded-xl hover:bg-indigo-700 transition-all font-semibold shadow-lg shadow-indigo-100 text-sm sm:text-base ${shoppingItems.length === 0 ? 'w-full sm:w-auto' : 'flex-1 sm:flex-initial justify-center'}`}
+              >
+                <Plus size={16} className="sm:w-5 sm:h-5" />
+                Nova Compra
+              </button>
             </>
           )}
-          <button 
-            onClick={() => handleOpenModal()}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all font-semibold shadow-lg shadow-indigo-100"
-          >
-            <Plus size={20} />
-            Nova Compra
-          </button>
         </div>
       </div>
 
@@ -566,44 +602,52 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
         </div>
       ) : (
         <div className="space-y-6">
-          {itemsByMonth.map(([monthLabel, items]) => {
+          {itemsByMonth.map(([monthLabel, items, monthLabelFull]) => {
             const monthTotal = getMonthTotal(items);
-            const isCurrentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' }) === monthLabel;
-            const isFutureMonth = new Date(items[0].purchaseDate) > new Date();
+            
+            // Extrair mês e ano da primeira transação diretamente da string
+            const [transactionYearStr, transactionMonthStr] = items[0].purchaseDate.split('-');
+            const transactionYear = parseInt(transactionYearStr);
+            const transactionMonth = parseInt(transactionMonthStr); // 1-12
+            
+            // Obter mês e ano atual
+            const now = new Date();
+            const nowMonth = now.getMonth() + 1; // 1-12
+            const nowYear = now.getFullYear();
+            
+            // Verificar se é mês atual
+            const isCurrentMonth = transactionYear === nowYear && transactionMonth === nowMonth;
+            
+            // Verificar se é futuro
+            const isFutureMonth = transactionYear > nowYear || (transactionYear === nowYear && transactionMonth > nowMonth);
 
             return (
-              <div key={monthLabel} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden relative group">
-                <div className={`p-4 border-b relative ${isCurrentMonth ? 'bg-indigo-50 border-indigo-200' : isFutureMonth ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
-                  <button 
-                    onClick={() => handleShareShoppingList(items, monthLabel)}
-                    className="absolute top-3 right-3 text-green-600 hover:text-green-700 opacity-90 group-hover:opacity-100 transition-all p-2 bg-white hover:bg-green-50 rounded-lg shadow-md border border-green-200 z-10"
-                    title="Compartilhar via WhatsApp"
-                  >
-                    <Share2 size={18} />
-                  </button>
-                  <div className="flex items-center justify-between mb-3 pr-14">
-                    <div className="flex items-center gap-3">
-                      <Calendar className={isCurrentMonth ? 'text-indigo-600' : isFutureMonth ? 'text-green-600' : 'text-slate-600'} size={20} />
-                      <h4 className="text-lg font-bold text-slate-800 capitalize">{monthLabel}</h4>
-                      {isCurrentMonth && (
-                        <span className="text-xs font-bold bg-indigo-600 text-white px-2 py-1 rounded-full uppercase">
-                          Mês Atual
-                        </span>
-                      )}
-                      {isFutureMonth && (
-                        <span className="text-xs font-bold bg-green-600 text-white px-2 py-1 rounded-full uppercase">
-                          Futuro
-                        </span>
-                      )}
+              <div key={monthLabelFull} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden relative group">
+                <div className={`p-4 border-b ${isCurrentMonth ? 'bg-indigo-50 border-indigo-200' : isFutureMonth ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                    <div className="flex items-center justify-between md:justify-start gap-3">
+                      <div className="flex items-center gap-3">
+                        <Calendar className={isCurrentMonth ? 'text-indigo-600' : isFutureMonth ? 'text-green-600' : 'text-slate-600'} size={20} />
+                        <h4 className="text-lg font-bold text-slate-800">{monthLabel}</h4>
+                      </div>
+                      <button 
+                        onClick={() => handleShareShoppingList(items, monthLabelFull)}
+                        className="p-2 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-lg transition-all md:ml-2"
+                        title="Compartilhar via WhatsApp"
+                      >
+                        <Share2 size={18} />
+                      </button>
                     </div>
-                    <div className="text-right">
-                      <p className="text-xs text-slate-500 font-medium">Total Previsto</p>
-                      <p className="text-lg font-bold text-slate-800">
-                        R$ {monthTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </p>
+                    <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
+                      <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
+                        <p className="text-xs text-slate-500 font-medium mb-1">Total Previsto</p>
+                        <p className="font-bold text-slate-800 text-base sm:text-sm">
+                          R$ {monthTotal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mt-4">
                     <button
                       onClick={() => handleOpenCopyModal(items)}
                       className="flex-1 text-xs font-bold py-2 px-3 bg-slate-600 text-white rounded-lg hover:bg-slate-700 transition-all flex items-center justify-center gap-1.5"
@@ -612,7 +656,7 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
                       Copiar Mês
                     </button>
                     <button
-                      onClick={() => handleAddMonthToTransactions(items, monthLabel)}
+                      onClick={() => handleAddMonthToTransactions(items, monthLabelFull)}
                       className="flex-1 text-xs font-bold py-2 px-3 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-all flex items-center justify-center gap-1.5"
                     >
                       <Package size={14} />
