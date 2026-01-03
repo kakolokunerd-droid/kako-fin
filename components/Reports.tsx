@@ -46,20 +46,33 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
 
   // 2. Receitas vs Despesas por Mês
   const getMonthlyData = () => {
+    const monthNames = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+    
     const last6Months = Array.from({ length: 6 }).map((_, i) => {
       const d = new Date();
       d.setMonth(d.getMonth() - (5 - i));
+      const month = d.getMonth() + 1; // 1-12
+      const year = d.getFullYear();
+      const monthName = monthNames[d.getMonth()];
+      
       return {
-        month: d.getMonth(),
-        year: d.getFullYear(),
-        label: d.toLocaleDateString('pt-BR', { month: 'short', year: 'numeric' })
+        month, // 1-12
+        year,
+        label: `${monthName}/${year}`
       };
     });
 
     return last6Months.map(({ month, year, label }) => {
+      // Filtrar transações usando extração direta da string para evitar problemas de timezone
       const monthTransactions = transactions.filter(t => {
-        const tDate = new Date(t.date);
-        return tDate.getMonth() === month && tDate.getFullYear() === year;
+        const [tYearStr, tMonthStr] = t.date.split('-');
+        const tYear = parseInt(tYearStr);
+        const tMonth = parseInt(tMonthStr); // 1-12
+        
+        return tMonth === month && tYear === year;
       });
 
       return {
@@ -74,15 +87,24 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
 
   // 3. Evolução de Saldo
   const getBalanceEvolution = () => {
-    const sortedTransactions = [...transactions].sort((a, b) => 
-      new Date(a.date).getTime() - new Date(b.date).getTime()
-    );
+    // Ordenar transações por data (comparação direta de strings YYYY-MM-DD)
+    const sortedTransactions = [...transactions].sort((a, b) => {
+      if (a.date > b.date) return 1;
+      if (a.date < b.date) return -1;
+      return 0;
+    });
     
     let balance = 0;
     return sortedTransactions.map(t => {
       balance += t.type === 'income' ? t.amount : -t.amount;
+      
+      // Formatar data para exibição sem usar new Date() para evitar problemas de timezone
+      const [year, month, day] = t.date.split('-');
+      const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+      const monthName = monthNames[parseInt(month) - 1];
+      
       return {
-        date: new Date(t.date).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
+        date: `${day}/${monthName}`,
         saldo: balance
       };
     }).slice(-30); // Últimos 30 registros
@@ -102,20 +124,33 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
 
   // 5. Análise de Tendências (Últimos 3 meses)
   const getTrendAnalysis = () => {
+    const monthNames = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+    
     const last3Months = Array.from({ length: 3 }).map((_, i) => {
       const d = new Date();
       d.setMonth(d.getMonth() - (2 - i));
+      const month = d.getMonth() + 1; // 1-12
+      const year = d.getFullYear();
+      const monthName = monthNames[d.getMonth()];
+      
       return {
-        month: d.getMonth(),
-        year: d.getFullYear(),
-        label: d.toLocaleDateString('pt-BR', { month: 'short' })
+        month, // 1-12
+        year,
+        label: monthName
       };
     });
 
     return last3Months.map(({ month, year, label }) => {
+      // Filtrar transações usando extração direta da string para evitar problemas de timezone
       const monthTransactions = transactions.filter(t => {
-        const tDate = new Date(t.date);
-        return tDate.getMonth() === month && tDate.getFullYear() === year;
+        const [tYearStr, tMonthStr] = t.date.split('-');
+        const tYear = parseInt(tYearStr);
+        const tMonth = parseInt(tMonthStr); // 1-12
+        
+        return tMonth === month && tYear === year;
       });
 
       const income = monthTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);

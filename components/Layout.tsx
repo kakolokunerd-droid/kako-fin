@@ -12,7 +12,8 @@ import {
   Heart,
   X,
   Copy,
-  Settings
+  Settings,
+  ShoppingCart
 } from 'lucide-react';
 import { UserProfile } from '../types';
 
@@ -33,6 +34,7 @@ const Layout: React.FC<LayoutProps> = ({ children, activeTab, setActiveTab, onLo
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'transactions', label: 'Transações', icon: Wallet },
+    { id: 'shopping', label: 'Compras', icon: ShoppingCart },
     { id: 'goals', label: 'Metas', icon: Target },
     { id: 'reports', label: 'Relatórios', icon: BarChart3 },
     { id: 'profile', label: 'Perfil', icon: User },

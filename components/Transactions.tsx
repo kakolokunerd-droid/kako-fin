@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Plus, Search, Filter, Trash2, Edit2 } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Plus, Search, Filter, Trash2, Edit2, Calendar } from 'lucide-react';
 import { Transaction, TransactionType, Category } from '../types';
 
 interface TransactionsProps {
@@ -11,18 +11,33 @@ interface TransactionsProps {
 }
 
 const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpdate, onDelete }) => {
+  // Função para obter data local no formato YYYY-MM-DD sem problemas de timezone
+  const getLocalDateString = (date: Date = new Date()): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // Função para formatar data para exibição sem problemas de timezone
+  const formatDateForDisplay = (dateString: string): string => {
+    // Extrair dia, mês e ano diretamente da string YYYY-MM-DD
+    const [year, month, day] = dateString.split('-');
+    return `${day}/${month}/${year}`;
+  };
+
   const [showModal, setShowModal] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDateString());
   const [category, setCategory] = useState(Category.FOOD);
   const [type, setType] = useState<TransactionType>('expense');
 
   const resetForm = () => {
     setDescription('');
     setAmount('');
-    setDate(new Date().toISOString().split('T')[0]);
+    setDate(getLocalDateString());
     setCategory(Category.FOOD);
     setType('expense');
     setEditingTransaction(null);
@@ -64,6 +79,106 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
     setShowModal(false);
   };
 
+  // Organizar transações por mês
+  const transactionsByMonth = useMemo(() => {
+    const grouped: { [key: string]: Transaction[] } = {};
+    
+    // Obter mês e ano atual para comparação
+    const now = new Date();
+    const nowMonth = now.getMonth() + 1; // 1-12
+    const nowYear = now.getFullYear();
+    
+    transactions.forEach(transaction => {
+      // Extrair mês e ano diretamente da string da data (formato YYYY-MM-DD) para evitar problemas de timezone
+      const [yearStr, monthStr] = transaction.date.split('-');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr); // 1-12
+      
+      // Criar chave única baseada em ano e mês
+      const monthKey = `${year}-${month}`;
+      
+      if (!grouped[monthKey]) {
+        grouped[monthKey] = [];
+      }
+      grouped[monthKey].push(transaction);
+    });
+
+    // Ordenar transações dentro de cada mês (da mais atual para a mais futura)
+    Object.keys(grouped).forEach(monthKey => {
+      grouped[monthKey].sort((a, b) => {
+        // Comparar datas diretamente como strings (YYYY-MM-DD)
+        // Strings no formato YYYY-MM-DD podem ser comparadas diretamente
+        if (a.date > b.date) return 1;
+        if (a.date < b.date) return -1;
+        return 0;
+      });
+    });
+
+    // Converter para array com label do mês e ordenar meses (da mais atual para a mais futura)
+    const result = Object.entries(grouped).map(([monthKey, monthTransactions]) => {
+      // Extrair mês e ano da primeira transação
+      const [yearStr, monthStr] = monthTransactions[0].date.split('-');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr); // 1-12
+      
+      // Criar label do mês usando Date apenas para formatação
+      const monthNames = [
+        'janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho',
+        'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'
+      ];
+      const monthLabel = `${monthNames[month - 1]} de ${year}`;
+      
+      return [monthLabel, monthTransactions] as [string, Transaction[]];
+    });
+
+    return result.sort((a, b) => {
+      // Extrair mês e ano das primeiras transações de cada grupo
+      const [yearAStr, monthAStr] = a[1][0].date.split('-');
+      const yearA = parseInt(yearAStr);
+      const monthA = parseInt(monthAStr); // 1-12
+      
+      const [yearBStr, monthBStr] = b[1][0].date.split('-');
+      const yearB = parseInt(yearBStr);
+      const monthB = parseInt(monthBStr); // 1-12
+      
+      // Verificar se é mês atual
+      const isACurrent = yearA === nowYear && monthA === nowMonth;
+      const isBCurrent = yearB === nowYear && monthB === nowMonth;
+      
+      // Verificar se é futuro
+      const isAFuture = yearA > nowYear || (yearA === nowYear && monthA > nowMonth);
+      const isBFuture = yearB > nowYear || (yearB === nowYear && monthB > nowMonth);
+      
+      // Mês atual primeiro
+      if (isACurrent && !isBCurrent) return -1;
+      if (!isACurrent && isBCurrent) return 1;
+      
+      // Depois futuros (do mais próximo para o mais distante)
+      if (isAFuture && isBFuture) {
+        // Comparar por ano e mês
+        if (yearA !== yearB) return yearA - yearB;
+        return monthA - monthB;
+      }
+      if (isAFuture && !isBFuture) return -1;
+      if (!isAFuture && isBFuture) return 1;
+      
+      // Por último passados (do mais recente para o mais antigo)
+      if (yearA !== yearB) return yearB - yearA;
+      return monthB - monthA;
+    });
+  }, [transactions]);
+
+  // Calcular totais por mês
+  const getMonthTotals = (transactions: Transaction[]) => {
+    const income = transactions
+      .filter(t => t.type === 'income')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const expense = transactions
+      .filter(t => t.type === 'expense')
+      .reduce((sum, t) => sum + t.amount, 0);
+    return { income, expense, balance: income - expense };
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200">
@@ -84,64 +199,126 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
         </button>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
-              <tr>
-                <th className="px-6 py-4">Descrição</th>
-                <th className="px-6 py-4">Categoria</th>
-                <th className="px-6 py-4">Data</th>
-                <th className="px-6 py-4 text-right">Valor</th>
-                <th className="px-6 py-4 text-center">Ações</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {transactions.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-slate-400 italic">
-                    Nenhuma transação encontrada. Clique em "Nova Transação" para começar.
-                  </td>
-                </tr>
-              ) : (
-                transactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-semibold text-slate-800">{t.description}</div>
-                      <div className="text-xs text-slate-400 md:hidden">{t.category}</div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{t.category}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600">
-                      {new Date(t.date).toLocaleDateString('pt-BR')}
-                    </td>
-                    <td className={`px-6 py-4 text-right font-bold text-sm ${t.type === 'income' ? 'text-green-600' : 'text-slate-700'}`}>
-                      {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </td>
-                    <td className="px-6 py-4 text-center">
-                      <div className="flex items-center justify-center gap-2">
-                        <button 
-                          onClick={() => handleOpenModal(t)}
-                          className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
-                          title="Editar transação"
-                        >
-                          <Edit2 size={18} />
-                        </button>
-                        <button 
-                          onClick={() => onDelete(t.id)}
-                          className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                          title="Excluir transação"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+      {transactionsByMonth.length === 0 ? (
+        <div className="bg-white rounded-3xl border-2 border-dashed border-slate-200 py-20 flex flex-col items-center justify-center text-slate-400">
+          <p className="font-medium">Nenhuma transação encontrada.</p>
+          <p className="text-sm">Clique em "Nova Transação" para começar.</p>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-6">
+          {transactionsByMonth.map(([monthLabel, monthTransactions]) => {
+            const totals = getMonthTotals(monthTransactions);
+            
+            // Extrair mês e ano da primeira transação diretamente da string
+            const [transactionYearStr, transactionMonthStr] = monthTransactions[0].date.split('-');
+            const transactionYear = parseInt(transactionYearStr);
+            const transactionMonth = parseInt(transactionMonthStr); // 1-12
+            
+            // Obter mês e ano atual
+            const now = new Date();
+            const nowMonth = now.getMonth() + 1; // 1-12
+            const nowYear = now.getFullYear();
+            
+            // Verificar se é mês atual
+            const isCurrentMonth = transactionYear === nowYear && transactionMonth === nowMonth;
+            
+            // Verificar se é futuro
+            const isFutureMonth = transactionYear > nowYear || (transactionYear === nowYear && transactionMonth > nowMonth);
+
+            return (
+              <div key={monthLabel} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                <div className={`p-4 border-b ${isCurrentMonth ? 'bg-indigo-50 border-indigo-200' : isFutureMonth ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Calendar className={isCurrentMonth ? 'text-indigo-600' : isFutureMonth ? 'text-green-600' : 'text-slate-600'} size={20} />
+                      <h4 className="text-lg font-bold text-slate-800 capitalize">{monthLabel}</h4>
+                      {isCurrentMonth && (
+                        <span className="text-xs font-bold bg-indigo-600 text-white px-2 py-1 rounded-full uppercase">
+                          Mês Atual
+                        </span>
+                      )}
+                      {isFutureMonth && (
+                        <span className="text-xs font-bold bg-green-600 text-white px-2 py-1 rounded-full uppercase">
+                          Futuro
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-4 text-sm">
+                      <div className="text-right">
+                        <p className="text-xs text-slate-500 font-medium">Receitas</p>
+                        <p className="font-bold text-green-600">
+                          R$ {totals.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-slate-500 font-medium">Despesas</p>
+                        <p className="font-bold text-red-600">
+                          R$ {totals.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-slate-500 font-medium">Saldo</p>
+                        <p className={`font-bold ${totals.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          R$ {totals.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
+                      <tr>
+                        <th className="px-6 py-4">Descrição</th>
+                        <th className="px-6 py-4">Categoria</th>
+                        <th className="px-6 py-4">Data</th>
+                        <th className="px-6 py-4 text-right">Valor</th>
+                        <th className="px-6 py-4 text-center">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {monthTransactions.map((t) => (
+                        <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-semibold text-slate-800">{t.description}</div>
+                            <div className="text-xs text-slate-400 md:hidden">{t.category}</div>
+                          </td>
+                          <td className="px-6 py-4 text-sm text-slate-600">{t.category}</td>
+                          <td className="px-6 py-4 text-sm text-slate-600">
+                            {formatDateForDisplay(t.date)}
+                          </td>
+                          <td className={`px-6 py-4 text-right font-bold text-sm ${t.type === 'income' ? 'text-green-600' : 'text-slate-700'}`}>
+                            {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <button 
+                                onClick={() => handleOpenModal(t)}
+                                className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
+                                title="Editar transação"
+                              >
+                                <Edit2 size={18} />
+                              </button>
+                              <button 
+                                onClick={() => onDelete(t.id)}
+                                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                title="Excluir transação"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">

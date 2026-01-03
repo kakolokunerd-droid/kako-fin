@@ -20,6 +20,11 @@ DROP POLICY IF EXISTS "Users can insert own goals" ON goals;
 DROP POLICY IF EXISTS "Users can update own goals" ON goals;
 DROP POLICY IF EXISTS "Users can delete own goals" ON goals;
 
+DROP POLICY IF EXISTS "Users can view own shopping" ON shopping;
+DROP POLICY IF EXISTS "Users can insert own shopping" ON shopping;
+DROP POLICY IF EXISTS "Users can update own shopping" ON shopping;
+DROP POLICY IF EXISTS "Users can delete own shopping" ON shopping;
+
 -- Opção 1: Desabilitar RLS completamente (para desenvolvimento/teste)
 -- Descomente as linhas abaixo se quiser desabilitar RLS:
 -- ALTER TABLE profiles DISABLE ROW LEVEL SECURITY;
@@ -44,6 +49,12 @@ CREATE POLICY "Allow all operations on transactions"
 -- Políticas para goals: permitir acesso baseado no user_id
 CREATE POLICY "Allow all operations on goals"
   ON goals FOR ALL
+  USING (true)
+  WITH CHECK (true);
+
+-- Políticas para shopping: permitir acesso baseado no user_id
+CREATE POLICY "Allow all operations on shopping"
+  ON shopping FOR ALL
   USING (true)
   WITH CHECK (true);
 

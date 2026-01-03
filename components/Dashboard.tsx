@@ -25,6 +25,13 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
   const [loadingAdvice, setLoadingAdvice] = useState<boolean>(true);
   const [showSupportBanner, setShowSupportBanner] = useState(false);
 
+  // Função para formatar data para exibição sem problemas de timezone
+  const formatDateForDisplay = (dateString: string): string => {
+    // Extrair dia, mês e ano diretamente da string YYYY-MM-DD
+    const [year, month, day] = dateString.split('-');
+    return `${day}/${month}/${year}`;
+  };
+
   // Verificar a cada minuto se deve mostrar o banner
   useEffect(() => {
     const checkBanner = () => {
@@ -69,10 +76,28 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
     }
   };
 
-  const totalIncome = transactions
+  // Calcular totais apenas do mês atual
+  const getCurrentMonthTransactions = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentYear = now.getFullYear();
+    
+    return transactions.filter(t => {
+      // Extrair mês e ano diretamente da string da data (formato YYYY-MM-DD) para evitar problemas de timezone
+      const [yearStr, monthStr] = t.date.split('-');
+      const year = parseInt(yearStr);
+      const month = parseInt(monthStr); // 1-12
+      
+      return month === currentMonth && year === currentYear;
+    });
+  };
+
+  const currentMonthTransactions = getCurrentMonthTransactions();
+  
+  const totalIncome = currentMonthTransactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
-  const totalExpense = transactions
+  const totalExpense = currentMonthTransactions
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + t.amount, 0);
   const balance = totalIncome - totalExpense;
@@ -91,7 +116,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
 
     return last7Days.map(({ dateObj, date }) => {
       const dayTransactions = transactions.filter(t => {
-        const tDate = new Date(t.date);
+        // Extrair data diretamente da string para evitar problemas de timezone
+        const [tYear, tMonth, tDay] = t.date.split('-').map(Number);
+        const dateStr = `${tYear}-${String(tMonth).padStart(2, '0')}-${String(tDay).padStart(2, '0')}`;
+        const tDate = new Date(dateStr + 'T00:00:00');
         tDate.setHours(0, 0, 0, 0);
         return tDate.getTime() === dateObj.getTime();
       });
@@ -105,6 +133,40 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
   };
 
   const weeklyEvolution = getWeeklyEvolution();
+
+  // Dados para gráfico de evolução anual (receitas e gastos por mês)
+  const getAnnualEvolution = () => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    
+    // Array com os 12 meses do ano atual
+    const monthNames = [
+      'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+      'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
+    ];
+    
+    return Array.from({ length: 12 }, (_, i) => {
+      const month = i + 1; // 1-12
+      const monthLabel = monthNames[i];
+      
+      // Filtrar transações do mês usando extração direta da string
+      const monthTransactions = transactions.filter(t => {
+        const [tYearStr, tMonthStr] = t.date.split('-');
+        const tYear = parseInt(tYearStr);
+        const tMonth = parseInt(tMonthStr); // 1-12
+        
+        return tMonth === month && tYear === currentYear;
+      });
+
+      return {
+        mes: monthLabel,
+        receita: monthTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0),
+        despesa: monthTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0)
+      };
+    });
+  };
+
+  const annualEvolution = getAnnualEvolution();
 
   useEffect(() => {
     const fetchAdvice = async () => {
@@ -275,6 +337,51 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
         </div>
       </div>
 
+      {/* Annual Evolution Chart */}
+      <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h4 className="font-bold text-slate-800 mb-4 text-sm md:text-base flex items-center gap-2">
+          <TrendingUp className="text-indigo-600" size={18} />
+          Evolução Anual ({new Date().getFullYear()}) - Receitas e Gastos por Mês
+        </h4>
+        <div className="h-64 md:h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={annualEvolution}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis 
+                dataKey="mes" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fontSize: 11, fill: '#94a3b8' }}
+              />
+              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+              <Tooltip 
+                formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+                contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)', fontSize: '12px' }}
+              />
+              <Legend />
+              <Line 
+                type="monotone" 
+                dataKey="receita" 
+                stroke="#22c55e" 
+                strokeWidth={3}
+                dot={{ fill: '#22c55e', r: 4 }}
+                activeDot={{ r: 6 }}
+                name="Receitas"
+              />
+              <Line 
+                type="monotone" 
+                dataKey="despesa" 
+                stroke="#f43f5e" 
+                strokeWidth={3}
+                dot={{ fill: '#f43f5e', r: 4 }}
+                activeDot={{ r: 6 }}
+                name="Despesas"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
       {/* Secondary Row: Recent Transactions and Goals */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
         <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm min-w-0">
@@ -296,7 +403,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-slate-800 text-xs md:text-sm truncate">{t.description}</p>
-                      <p className="text-[10px] md:text-xs text-slate-500 truncate">{t.category} • {new Date(t.date).toLocaleDateString()}</p>
+                      <p className="text-[10px] md:text-xs text-slate-500 truncate">{t.category} • {formatDateForDisplay(t.date)}</p>
                     </div>
                   </div>
                   <span className={`font-bold text-xs md:text-sm flex-shrink-0 ${t.type === 'income' ? 'text-green-600' : 'text-slate-800'}`}>

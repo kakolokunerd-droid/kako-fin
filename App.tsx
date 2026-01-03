@@ -7,11 +7,15 @@ import Goals from './components/Goals';
 import Reports from './components/Reports';
 import Profile from './components/Profile';
 import Admin from './components/Admin';
+import Shopping from './components/Shopping';
+import { ToastContainer, useToast } from './components/Toast';
 import { db } from './services/db';
-import { AuthState, Transaction, Goal, UserProfile, Category } from './types';
+import { AuthState, Transaction, Goal, UserProfile, Category, ShoppingItem } from './types';
 import { Wallet, LogIn, UserPlus, Loader2, Eye, EyeOff } from 'lucide-react';
 
 const App: React.FC = () => {
+  const { toasts, showToast, removeToast } = useToast();
+  
   const [auth, setAuth] = useState<AuthState>(() => {
     const saved = localStorage.getItem('fintrack_auth');
     return saved ? JSON.parse(saved) : { user: null, isAuthenticated: false };
@@ -25,6 +29,7 @@ const App: React.FC = () => {
   // App Data
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
   
   // Flag para evitar salvamento durante carregamento inicial
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -39,6 +44,7 @@ const App: React.FC = () => {
       setHasLoadedData(false);
       setTransactions([]);
       setGoals([]);
+      setShoppingItems([]);
     }
   }, [auth.isAuthenticated]);
 
@@ -80,12 +86,14 @@ const App: React.FC = () => {
     setIsLoading(true);
     setIsLoadingData(true);
     try {
-      const [tData, gData] = await Promise.all([
+      const [tData, gData, sData] = await Promise.all([
         db.getData<Transaction>('transactions', userId),
-        db.getData<Goal>('goals', userId)
+        db.getData<Goal>('goals', userId),
+        db.getData<ShoppingItem>('shopping', userId)
       ]);
       setTransactions(tData);
       setGoals(gData);
+      setShoppingItems(sData);
       setHasLoadedData(true);
     } finally {
       setIsLoading(false);
@@ -108,6 +116,12 @@ const App: React.FC = () => {
       db.saveData('goals', auth.user.email, goals);
     }
   }, [goals, auth.isAuthenticated, hasLoadedData, isLoadingData]);
+
+  useEffect(() => {
+    if (auth.isAuthenticated && auth.user && hasLoadedData && !isLoadingData && shoppingItems.length >= 0) {
+      db.saveData('shopping', auth.user.email, shoppingItems);
+    }
+  }, [shoppingItems, auth.isAuthenticated, hasLoadedData, isLoadingData]);
 
   useEffect(() => {
     localStorage.setItem('fintrack_auth', JSON.stringify(auth));
@@ -214,6 +228,93 @@ const App: React.FC = () => {
     setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g));
   };
 
+  // Shopping Handlers
+  const addShoppingItem = (item: Omit<ShoppingItem, 'id'>) => {
+    const newItem = { ...item, id: Math.random().toString(36).substr(2, 9) };
+    setShoppingItems(prev => [...prev, newItem]);
+  };
+
+  const updateShoppingItem = (id: string, updated: Omit<ShoppingItem, 'id'>) => {
+    setShoppingItems(shoppingItems.map(item => item.id === id ? { ...updated, id } : item));
+  };
+
+  const deleteShoppingItem = (id: string) => {
+    setShoppingItems(shoppingItems.filter(item => item.id !== id));
+  };
+
+  const removeTransactionsByMonth = (month: number, year: number) => {
+    setTransactions(prevTransactions => prevTransactions.filter(t => {
+      const tDate = new Date(t.date);
+      return !(tDate.getMonth() === month && tDate.getFullYear() === year);
+    }));
+  };
+
+  const addShoppingToTransactions = (newTransactions: Array<{ description: string; amount: number; date: string; category: string; type: 'expense' }>, month?: number, year?: number) => {
+    setTransactions(prevTransactions => {
+      let filteredTransactions = prevTransactions;
+      
+      if (month !== undefined && year !== undefined) {
+        console.log('Removendo transações de gastos do mês:', month, 'ano:', year);
+        
+        // Extrair nomes base das compras parceladas (remover " (X/Y)" para identificar a compra)
+        const parceledItemNames = new Set<string>();
+        newTransactions.forEach(t => {
+          // Se a descrição contém " (X/Y)", é uma parcela
+          const match = t.description.match(/^(.+?)\s+\(\d+\/\d+\)$/);
+          if (match) {
+            parceledItemNames.add(match[1]); // Nome base da compra
+          }
+        });
+        
+        console.log('Compras parceladas identificadas:', Array.from(parceledItemNames));
+        
+        filteredTransactions = prevTransactions.filter(t => {
+          // Extrair mês e ano diretamente da string da data para evitar problemas de timezone
+          const [tYearStr, tMonthStr] = t.date.split('-');
+          const tYear = parseInt(tYearStr);
+          const tMonth = parseInt(tMonthStr); // 1-12
+          
+          // Verificar se é uma parcela de uma compra que será readicionada
+          let isParcelaToRemove = false;
+          if (t.type === 'expense') {
+            const match = t.description.match(/^(.+?)\s+\(\d+\/\d+\)$/);
+            if (match) {
+              const baseName = match[1];
+              if (parceledItemNames.has(baseName)) {
+                isParcelaToRemove = true;
+                console.log('Removendo parcela existente:', t.description, t.date);
+              }
+            }
+          }
+          
+          // Remover se:
+          // 1. For do mês/ano especificado E for uma transação de gasto (expense) - OU
+          // 2. For uma parcela de uma compra que será readicionada
+          const shouldRemove = (tMonth === month && tYear === year && t.type === 'expense') || isParcelaToRemove;
+          
+          if (shouldRemove && !isParcelaToRemove) {
+            console.log('Removendo transação de gasto do mês:', t.description, t.date, t.type);
+          }
+          
+          return !shouldRemove;
+        });
+        
+        console.log('Transações restantes após remoção (mantendo receitas):', filteredTransactions.length);
+      }
+      
+      // Adicionar novas transações
+      const transactionsToAdd = newTransactions.map(t => ({
+        ...t,
+        id: Math.random().toString(36).substr(2, 9)
+      }));
+      
+      console.log('Adicionando novas transações:', transactionsToAdd.length);
+      console.log('Total de transações após adição:', transactionsToAdd.length + filteredTransactions.length);
+      
+      return [...transactionsToAdd, ...filteredTransactions];
+    });
+  };
+
   const updateUserProfile = async (updated: UserProfile) => {
     setIsLoading(true);
     await db.saveProfile(updated);
@@ -289,8 +390,10 @@ const App: React.FC = () => {
   }
 
   return (
-    <Layout activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} user={auth.user!}>
-      <div className="relative">
+    <>
+      <ToastContainer toasts={toasts} onClose={removeToast} />
+      <Layout activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} user={auth.user!}>
+        <div className="relative">
         {isLoading && (
           <div className="absolute top-0 right-0 p-2 z-50 flex items-center gap-2 text-xs font-bold text-indigo-600 bg-indigo-50 rounded-lg animate-pulse">
             <Loader2 size={12} className="animate-spin" />
@@ -299,12 +402,14 @@ const App: React.FC = () => {
         )}
         {activeTab === 'dashboard' && <Dashboard transactions={transactions} goals={goals} user={auth.user} />}
         {activeTab === 'transactions' && <Transactions transactions={transactions} onAdd={addTransaction} onUpdate={updateTransaction} onDelete={deleteTransaction} />}
+        {activeTab === 'shopping' && <Shopping shoppingItems={shoppingItems} onAdd={addShoppingItem} onUpdate={updateShoppingItem} onDelete={deleteShoppingItem} onAddToTransactions={addShoppingToTransactions} showToast={showToast} />}
         {activeTab === 'goals' && <Goals goals={goals} onAdd={addGoal} onUpdate={updateGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />}
         {activeTab === 'reports' && <Reports transactions={transactions} goals={goals} />}
         {activeTab === 'profile' && <Profile user={auth.user!} onUpdate={updateUserProfile} onChangePassword={changePassword} onLogout={handleLogout} />}
         {activeTab === 'admin' && auth.user && auth.user.role === 'admin' && <Admin userEmail={auth.user.email} />}
-      </div>
-    </Layout>
+        </div>
+      </Layout>
+    </>
   );
 };
 

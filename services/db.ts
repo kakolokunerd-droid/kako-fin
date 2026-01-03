@@ -41,7 +41,7 @@ class CloudDatabase {
     }
 
     try {
-      const tableName = key === "transactions" ? "transactions" : "goals";
+      const tableName = key === "transactions" ? "transactions" : key === "goals" ? "goals" : "shopping";
       const { data, error } = await supabase
         .from(tableName)
         .select("*")
@@ -76,7 +76,7 @@ class CloudDatabase {
           category: t.category,
           type: t.type,
         })) as T[];
-      } else {
+      } else if (tableName === "goals") {
         return (data as any[]).map((g) => ({
           id: g.id,
           name: g.name,
@@ -84,7 +84,18 @@ class CloudDatabase {
           currentAmount: parseFloat(g.current_amount),
           deadline: g.deadline,
         })) as T[];
+      } else if (tableName === "shopping") {
+        return (data as any[]).map((s) => ({
+          id: s.id,
+          name: s.name,
+          type: s.type,
+          purchaseDate: s.purchase_date,
+          amount: parseFloat(s.amount),
+          installments: s.installments || undefined,
+          category: s.category,
+        })) as T[];
       }
+      return [] as T[];
     } catch (error) {
       console.error(`Erro ao buscar ${key} do Supabase:`, error);
       return this.getDataLocalStorage<T>(key, userId);
@@ -98,7 +109,7 @@ class CloudDatabase {
     }
 
     try {
-      const tableName = key === "transactions" ? "transactions" : "goals";
+      const tableName = key === "transactions" ? "transactions" : key === "goals" ? "goals" : "shopping";
 
       // Primeiro, buscar dados existentes COMPLETOS (não só IDs)
       const { data: existingData, error: fetchError } = await supabase
@@ -133,25 +144,39 @@ class CloudDatabase {
 
       // Separar novos itens e atualizações
       for (const item of data as any[]) {
-        const dbItem =
-          tableName === "transactions"
-            ? {
-                id: item.id,
-                user_id: userId,
-                description: item.description,
-                amount: item.amount.toString(),
-                date: item.date,
-                category: item.category,
-                type: item.type,
-              }
-            : {
-                id: item.id,
-                user_id: userId,
-                name: item.name,
-                target_amount: item.targetAmount.toString(),
-                current_amount: item.currentAmount.toString(),
-                deadline: item.deadline,
-              };
+        let dbItem: any;
+        
+        if (tableName === "transactions") {
+          dbItem = {
+            id: item.id,
+            user_id: userId,
+            description: item.description,
+            amount: item.amount.toString(),
+            date: item.date,
+            category: item.category,
+            type: item.type,
+          };
+        } else if (tableName === "goals") {
+          dbItem = {
+            id: item.id,
+            user_id: userId,
+            name: item.name,
+            target_amount: item.targetAmount.toString(),
+            current_amount: item.currentAmount.toString(),
+            deadline: item.deadline,
+          };
+        } else if (tableName === "shopping") {
+          dbItem = {
+            id: item.id,
+            user_id: userId,
+            name: item.name,
+            type: item.type,
+            purchase_date: item.purchaseDate,
+            amount: item.amount.toString(),
+            installments: item.installments || null,
+            category: item.category,
+          };
+        }
 
         if (existingIds.has(item.id)) {
           updatedItems.push(dbItem);

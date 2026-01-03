@@ -45,3 +45,15 @@ export enum Category {
   RENT = 'Moradia',
   OTHERS = 'Outros'
 }
+
+export type PurchaseType = 'cash' | 'installment';
+
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  type: PurchaseType;
+  purchaseDate: string;
+  amount: number;
+  installments?: number; // Apenas para compras parceladas
+  category: string;
+}
