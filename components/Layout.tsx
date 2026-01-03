@@ -32,6 +32,7 @@ const Layout: React.FC<LayoutProps> = ({
   user,
 }) => {
   const [showSupportBanner, setShowSupportBanner] = useState(false);
+  const APP_VERSION = "1.0.0"; // Versão do app
 
   // Verificar se é admin baseado no role
   const isAdmin = user?.role === "admin";
@@ -153,28 +154,40 @@ const Layout: React.FC<LayoutProps> = ({
         )}
 
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
-          <h2 className="text-lg font-semibold text-slate-800">
-            {menuItems.find((i) => i.id === activeTab)?.label}
-          </h2>
           <div className="flex items-center gap-4">
-            <span className="text-sm text-slate-500 hidden sm:block">
-              Olá,{" "}
-              <span className="font-semibold text-indigo-600">{user.name}</span>
+            <h2 className="text-lg font-semibold text-slate-800">
+              {menuItems.find((i) => i.id === activeTab)?.label}
+            </h2>
+            <span className="text-xs text-slate-400 font-medium">
+              v{APP_VERSION}
             </span>
-            <button
-              onClick={() => setActiveTab("profile")}
-              className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200 overflow-hidden hover:ring-2 hover:ring-indigo-500 transition-all"
-            >
-              {user.avatar ? (
-                <img
-                  src={user.avatar}
-                  alt={user.name}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                user.name.charAt(0).toUpperCase()
-              )}
-            </button>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="flex flex-col items-end hidden sm:flex">
+              <span className="text-xs text-slate-400">Olá,</span>
+              <span className="text-sm font-semibold text-indigo-600">
+                {user.name}
+              </span>
+            </div>
+            <div className="flex flex-col items-center gap-1">
+              <button
+                onClick={() => setActiveTab("profile")}
+                className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200 overflow-hidden hover:ring-2 hover:ring-indigo-500 transition-all"
+              >
+                {user.avatar ? (
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  user.name.charAt(0).toUpperCase()
+                )}
+              </button>
+              <span className="text-xs text-slate-500 font-medium sm:hidden">
+                {user.name}
+              </span>
+            </div>
           </div>
         </header>
 
