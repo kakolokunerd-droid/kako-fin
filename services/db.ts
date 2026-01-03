@@ -400,6 +400,160 @@ class CloudDatabase {
     return password;
   }
 
+  // Deletar uma transação específica por ID
+  async deleteTransaction(userId: string, transactionId: string): Promise<void> {
+    if (!this.isSupabaseConfigured()) {
+      // Fallback para localStorage
+      const key = `fintrack_${userId}_transactions`;
+      const data = localStorage.getItem(key);
+      if (data) {
+        const transactions: Transaction[] = JSON.parse(data);
+        const filtered = transactions.filter(t => t.id !== transactionId);
+        localStorage.setItem(key, JSON.stringify(filtered));
+        console.log(`✅ Transação ${transactionId} removida do localStorage`);
+      }
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("id", transactionId)
+        .eq("user_id", userId);
+
+      if (error) {
+        console.error("❌ Erro ao deletar transação:", error);
+        throw error;
+      } else {
+        console.log(`✅ Transação ${transactionId} removida do banco`);
+      }
+    } catch (error) {
+      console.error("Erro ao remover transação do banco:", error);
+      throw error;
+    }
+  }
+
+  // Remover transações do banco por mês/ano e tipo
+  async deleteTransactionsByMonth(
+    userId: string,
+    month: number, // 1-12
+    year: number,
+    type?: 'expense' | 'income',
+    itemNamesToUpdate?: Set<string> // Nomes dos itens que estão sendo atualizados (para remover apenas esses)
+  ): Promise<void> {
+    if (!this.isSupabaseConfigured()) {
+      // Para localStorage, remover do array local
+      const key = `fintrack_${userId}_transactions`;
+      const data = localStorage.getItem(key);
+      if (data) {
+        const transactions: Transaction[] = JSON.parse(data);
+        const filtered = transactions.filter(t => {
+          const [tYearStr, tMonthStr] = t.date.split('-');
+          const tYear = parseInt(tYearStr);
+          const tMonth = parseInt(tMonthStr); // 1-12
+          const matchesMonth = tMonth === month && tYear === year;
+          const matchesType = type ? t.type === type : true;
+          
+          // Se itemNamesToUpdate foi fornecido, remover apenas transações relacionadas a esses itens
+          if (itemNamesToUpdate && matchesMonth && matchesType && t.type === 'expense') {
+            // Verificar se é uma parcela (padrão: "Nome (x/y)")
+            const parcelMatch = t.description.match(/^(.+?)\s+\(\d+\/\d+\)$/);
+            if (parcelMatch) {
+              // É uma parcela: verificar se o nome base está na lista de itens a atualizar
+              const itemName = parcelMatch[1];
+              if (itemNamesToUpdate.has(itemName)) {
+                return false; // Remover esta parcela
+              }
+            } else {
+              // Não é uma parcela: verificar se a descrição está na lista de itens a atualizar
+              if (itemNamesToUpdate.has(t.description)) {
+                return false; // Remover esta transação
+              }
+            }
+            // Se não está na lista de itens a atualizar, preservar (não remover)
+            return true;
+          }
+          
+          // Se itemNamesToUpdate não foi fornecido, remover todas as transações do tipo especificado do mês
+          return !(matchesMonth && matchesType);
+        });
+        localStorage.setItem(key, JSON.stringify(filtered));
+        console.log(`✅ Removidas ${transactions.length - filtered.length} transações do localStorage`);
+      }
+      return;
+    }
+
+    try {
+      // Buscar todas as transações do usuário
+      const { data: allTransactions, error: fetchError } = await supabase
+        .from("transactions")
+        .select("id, date, type, description")
+        .eq("user_id", userId);
+
+      if (fetchError) {
+        console.error("❌ Erro ao buscar transações para remoção:", fetchError);
+        return;
+      }
+
+      // Filtrar IDs das transações que devem ser removidas
+      const idsToDelete = (allTransactions || [])
+        .filter(t => {
+          const [tYearStr, tMonthStr] = t.date.split('-');
+          const tYear = parseInt(tYearStr);
+          const tMonth = parseInt(tMonthStr); // 1-12
+          const matchesMonth = tMonth === month && tYear === year;
+          const matchesType = type ? t.type === type : true;
+          
+          // Se itemNamesToUpdate foi fornecido, remover apenas transações relacionadas a esses itens
+          if (itemNamesToUpdate && matchesMonth && matchesType && t.type === 'expense') {
+            // Verificar se é uma parcela (padrão: "Nome (x/y)")
+            const parcelMatch = t.description.match(/^(.+?)\s+\(\d+\/\d+\)$/);
+            if (parcelMatch) {
+              // É uma parcela: verificar se o nome base está na lista de itens a atualizar
+              const itemName = parcelMatch[1];
+              if (itemNamesToUpdate.has(itemName)) {
+                return true; // Remover esta parcela
+              }
+            } else {
+              // Não é uma parcela: verificar se a descrição está na lista de itens a atualizar
+              if (itemNamesToUpdate.has(t.description)) {
+                return true; // Remover esta transação
+              }
+            }
+            // Se não está na lista de itens a atualizar, preservar (não remover)
+            return false;
+          }
+          
+          // Se itemNamesToUpdate não foi fornecido, remover todas as transações do tipo especificado do mês
+          return matchesMonth && matchesType;
+        })
+        .map(t => t.id);
+
+      if (idsToDelete.length === 0) {
+        console.log(`ℹ️ Nenhuma transação encontrada para remover (mês ${month}/${year}, tipo: ${type || 'todos'})`);
+        return;
+      }
+
+      console.log(`🗑️ Removendo ${idsToDelete.length} transações do mês ${month}/${year} (tipo: ${type || 'todos'})${itemNamesToUpdate ? ` relacionadas aos itens: ${Array.from(itemNamesToUpdate).join(', ')}` : ''}`);
+
+      // Deletar transações
+      const { error: deleteError } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("user_id", userId)
+        .in("id", idsToDelete);
+
+      if (deleteError) {
+        console.error("❌ Erro ao deletar transações:", deleteError);
+      } else {
+        console.log(`✅ ${idsToDelete.length} transações removidas do banco`);
+      }
+    } catch (error) {
+      console.error("Erro ao remover transações do banco:", error);
+    }
+  }
+
   // Salvamento de senha do usuário
   async savePassword(email: string, password: string): Promise<void> {
     // Salvar no localStorage primeiro (cache local)

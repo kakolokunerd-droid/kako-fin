@@ -7,14 +7,19 @@ interface ShoppingProps {
   shoppingItems: ShoppingItem[];
   onAdd: (item: Omit<ShoppingItem, 'id'>) => void;
   onUpdate: (id: string, item: Omit<ShoppingItem, 'id'>) => void;
-  onDelete: (id: string) => void;
-  onAddToTransactions: (transactions: Array<{ description: string; amount: number; date: string; category: string; type: 'expense' }>, month?: number, year?: number) => void;
+  onDelete: (id: string) => Promise<void>;
+  onAddToTransactions: (transactions: Array<{ description: string; amount: number; date: string; category: string; type: 'expense' }>, month?: number, year?: number, parceledItemNames?: Set<string>) => Promise<void>;
   showToast: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
 const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onDelete, onAddToTransactions, showToast }) => {
   const [showModal, setShowModal] = useState(false);
   const [showCopyModal, setShowCopyModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteBulkModal, setShowDeleteBulkModal] = useState(false);
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [itemsToDelete, setItemsToDelete] = useState<Set<string>>(new Set());
+  const [deleteSelectionMode, setDeleteSelectionMode] = useState(false);
   const [copySourceItems, setCopySourceItems] = useState<ShoppingItem[]>([]);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [copyTargetMonth, setCopyTargetMonth] = useState('');
@@ -90,9 +95,7 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
     setShowModal(false);
   };
 
-  const handleAddMonthToTransactions = (items: ShoppingItem[], monthLabel: string) => {
-    const transactions: Array<{ description: string; amount: number; date: string; category: string; type: 'expense' }> = [];
-    
+  const handleAddMonthToTransactions = async (items: ShoppingItem[], monthLabel: string) => {
     if (items.length === 0) {
       showToast('Nenhum item para adicionar às transações.', 'info');
       return;
@@ -102,20 +105,24 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
     const firstItemDate = items[0].purchaseDate; // Formato: YYYY-MM-DD
     const [referenceYearStr, referenceMonthStr] = firstItemDate.split('-');
     const referenceYear = parseInt(referenceYearStr);
-    const referenceMonth = parseInt(referenceMonthStr) - 1; // Converter para 0-11 para getMonth()
     const referenceMonthNum = parseInt(referenceMonthStr); // 1-12 para uso em strings
     
-    // Criar data do primeiro dia do mês de referência para as transações
-    const referenceDateFormatted = `${referenceYear}-${String(referenceMonthNum).padStart(2, '0')}-01`;
-    
-    console.log('Adicionando transações para o mês:', {
+    console.log('🔄 Processando transações para o mês:', {
       monthLabel,
       referenceMonth: referenceMonthNum,
       referenceYear,
-      referenceDateFormatted,
-      itemsCount: items.length,
-      firstItemDate: items[0].purchaseDate
+      itemsCount: items.length
     });
+    
+    // Identificar apenas os itens parcelados do mês que está sendo processado
+    // Isso garante que apenas as parcelas deste mês sejam recalculadas
+    const monthParceledItems = items.filter(item => item.type === 'installment');
+    const parceledItemNames = new Set(monthParceledItems.map(item => item.name));
+    
+    console.log('📦 Itens parcelados do mês identificados:', Array.from(parceledItemNames));
+    
+    // Agora processar apenas os itens do mês selecionado
+    const transactions: Array<{ description: string; amount: number; date: string; category: string; type: 'expense' }> = [];
     
     items.forEach(item => {
       // Extrair mês e ano diretamente da string da data
@@ -138,6 +145,7 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
       
       if (item.type === 'cash') {
         // Compra à vista: adiciona transação no primeiro dia do mês de referência
+        const referenceDateFormatted = `${referenceYear}-${String(referenceMonthNum).padStart(2, '0')}-01`;
         transactions.push({
           description: item.name,
           amount: item.amount,
@@ -145,9 +153,9 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
           category: item.category,
           type: 'expense'
         });
-        console.log('Adicionando compra à vista:', item.name, referenceDateFormatted);
+        console.log('✅ Adicionando compra à vista:', item.name, referenceDateFormatted);
       } else {
-        // Compra parcelada: adiciona TODAS as parcelas nos meses correspondentes
+        // Compra parcelada: calcular valor da parcela e adicionar apenas parcelas do mês de referência ou futuras
         const installmentAmount = item.amount / (item.installments || 1);
         
         // Extrair mês e ano da data de compra
@@ -155,16 +163,19 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
         const purchaseYear = parseInt(purchaseYearStr);
         const purchaseMonth = parseInt(purchaseMonthStr);
         
-        console.log('Adicionando todas as parcelas:', {
+        console.log('📅 Processando compra parcelada:', {
           itemName: item.name,
           purchaseDate: item.purchaseDate,
           purchaseMonth,
           purchaseYear,
+          referenceMonth: referenceMonthNum,
+          referenceYear,
           installments: item.installments,
+          totalAmount: item.amount,
           installmentAmount
         });
         
-        // Adicionar uma parcela para cada mês
+        // Adicionar apenas as parcelas que pertencem ao mês de referência ou são futuras
         for (let i = 0; i < (item.installments || 1); i++) {
           // Calcular o mês e ano da parcela
           let parcelMonth = purchaseMonth + i;
@@ -176,31 +187,49 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
             parcelYear += 1;
           }
           
-          // Criar data da parcela (primeiro dia do mês)
-          const parcelDate = `${parcelYear}-${String(parcelMonth).padStart(2, '0')}-01`;
+          // Verificar se a parcela pertence ao mês de referência ou é futura
+          const isReferenceMonth = parcelMonth === referenceMonthNum && parcelYear === referenceYear;
+          const isFutureMonth = (parcelYear > referenceYear) || (parcelYear === referenceYear && parcelMonth > referenceMonthNum);
           
-          transactions.push({
-            description: `${item.name} (${i + 1}/${item.installments})`,
-            amount: installmentAmount,
-            date: parcelDate,
-            category: item.category,
-            type: 'expense'
-          });
-          
-          console.log(`Adicionando parcela ${i + 1}/${item.installments}:`, parcelDate);
+          // Adicionar apenas se for do mês de referência ou futura
+          if (isReferenceMonth || isFutureMonth) {
+            // Criar data da parcela (primeiro dia do mês)
+            const parcelDate = `${parcelYear}-${String(parcelMonth).padStart(2, '0')}-01`;
+            
+            transactions.push({
+              description: `${item.name} (${i + 1}/${item.installments})`,
+              amount: installmentAmount, // Valor da parcela (total dividido por número de parcelas)
+              date: parcelDate,
+              category: item.category,
+              type: 'expense'
+            });
+            
+            console.log(`  💰 Parcela ${i + 1}/${item.installments}: R$ ${installmentAmount.toFixed(2)} em ${parcelDate} (${isReferenceMonth ? 'mês de referência' : 'futura'})`);
+          } else {
+            console.log(`  ⏭️ Parcela ${i + 1}/${item.installments} ignorada (mês passado: ${parcelMonth}/${parcelYear})`);
+          }
         }
       }
     });
     
-    console.log('Total de transações a serem adicionadas:', transactions.length);
-    console.log('Transações:', transactions);
-    console.log('Mês e ano para remoção (1-12):', referenceMonthNum, referenceYear);
+    // Identificar os nomes dos itens que estão sendo adicionados (para remover apenas esses)
+    const itemNamesToUpdate = new Set(items.map(item => item.name));
+    
+    console.log('📊 Total de transações a serem adicionadas:', transactions.length);
+    console.log('📦 Itens que serão atualizados:', Array.from(itemNamesToUpdate));
+    console.log('🗑️ Serão removidas apenas as transações relacionadas a estes itens do mês:', referenceMonthNum, '/', referenceYear);
+    console.log('⚠️ Parcelas de compras parceladas de outros itens serão preservadas');
     
     if (transactions.length > 0) {
-      // Remover transações do mês e adicionar novas em uma única operação
-      // Passar referenceMonthNum (1-12) para evitar confusão
-      onAddToTransactions(transactions, referenceMonthNum, referenceYear);
-      showToast(`${transactions.length} transação(ões) adicionada(s) às transações do mês de ${monthLabel}!`, 'success');
+      // Passar os nomes dos itens para remover apenas as transações relacionadas a eles
+      // Parcelas de outros itens parcelados serão preservadas
+      try {
+        await onAddToTransactions(transactions, referenceMonthNum, referenceYear, itemNamesToUpdate);
+        showToast(`${transactions.length} transação(ões) adicionada(s) às transações do mês de ${monthLabel}!`, 'success');
+      } catch (error) {
+        console.error('❌ Erro ao adicionar transações:', error);
+        showToast('Erro ao adicionar transações. Tente novamente.', 'error');
+      }
     } else {
       showToast('Nenhuma transação a ser adicionada para este mês.', 'info');
     }
@@ -472,13 +501,52 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
         <h3 className="text-xl font-bold text-slate-800">Lista de Compras</h3>
         <div className="flex gap-3">
           {shoppingItems.length > 0 && (
-            <button 
-              onClick={handleShareShoppingList}
-              className="flex items-center gap-2 bg-green-600 text-white px-6 py-2.5 rounded-xl hover:bg-green-700 transition-all font-semibold shadow-lg shadow-green-100"
-            >
-              <Share2 size={20} />
-              Compartilhar
-            </button>
+            <>
+              {deleteSelectionMode ? (
+                <>
+                  <button
+                    onClick={() => {
+                      if (itemsToDelete.size > 0) {
+                        setShowDeleteBulkModal(true);
+                      } else {
+                        showToast('Selecione pelo menos um item para excluir.', 'warning');
+                      }
+                    }}
+                    className="flex items-center gap-2 bg-red-600 text-white px-6 py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100"
+                    disabled={itemsToDelete.size === 0}
+                  >
+                    <Trash2 size={20} />
+                    Excluir Selecionados ({itemsToDelete.size})
+                  </button>
+                  <button
+                    onClick={() => {
+                      setDeleteSelectionMode(false);
+                      setItemsToDelete(new Set());
+                    }}
+                    className="flex items-center gap-2 bg-slate-600 text-white px-6 py-2.5 rounded-xl hover:bg-slate-700 transition-all font-semibold"
+                  >
+                    Cancelar Seleção
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => setDeleteSelectionMode(true)}
+                    className="flex items-center gap-2 bg-red-600 text-white px-6 py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100"
+                  >
+                    <Trash2 size={20} />
+                    Excluir em Lote
+                  </button>
+                  <button 
+                    onClick={handleShareShoppingList}
+                    className="flex items-center gap-2 bg-green-600 text-white px-6 py-2.5 rounded-xl hover:bg-green-700 transition-all font-semibold shadow-lg shadow-green-100"
+                  >
+                    <Share2 size={20} />
+                    Compartilhar
+                  </button>
+                </>
+              )}
+            </>
           )}
           <button 
             onClick={() => handleOpenModal()}
@@ -556,25 +624,33 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
                 <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {items.map(item => {
                     const installmentAmount = item.type === 'installment' ? item.amount / (item.installments || 1) : item.amount;
+                    const isSelectedForDelete = itemsToDelete.has(item.id);
                     
                     return (
-                      <div key={item.id} className="bg-slate-50 rounded-2xl p-4 border border-slate-200 relative group">
-                        <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => handleOpenModal(item)}
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors"
-                            title="Editar"
-                          >
-                            <Edit2 size={16} />
-                          </button>
-                          <button
-                            onClick={() => onDelete(item.id)}
-                            className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
-                            title="Excluir"
-                          >
-                            <Trash2 size={16} />
-                          </button>
-                        </div>
+                      <div key={item.id} className={`bg-slate-50 rounded-2xl p-4 border relative group transition-all ${
+                        isSelectedForDelete ? 'border-red-400 bg-red-50' : 'border-slate-200'
+                      }`}>
+                        {!deleteSelectionMode && (
+                          <div className="absolute top-3 right-3 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleOpenModal(item)}
+                              className="p-1.5 text-slate-400 hover:text-indigo-600 transition-colors"
+                              title="Editar"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => {
+                                setItemToDelete(item.id);
+                                setShowDeleteModal(true);
+                              }}
+                              className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                              title="Excluir"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        )}
 
                         <div className="flex items-start gap-3 mb-3">
                           <div className={`p-2 rounded-xl ${
@@ -583,7 +659,27 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
                             {item.type === 'cash' ? <DollarSign size={20} /> : <CreditCard size={20} />}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h5 className="font-bold text-slate-800 mb-1 truncate">{item.name}</h5>
+                            <div className="flex items-center justify-between gap-2">
+                              <h5 className="font-bold text-slate-800 mb-1 truncate">{item.name}</h5>
+                              {deleteSelectionMode && (
+                                <input
+                                  type="checkbox"
+                                  checked={isSelectedForDelete}
+                                  onChange={() => {
+                                    setItemsToDelete(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(item.id)) {
+                                        newSet.delete(item.id);
+                                      } else {
+                                        newSet.add(item.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                  className="w-5 h-5 text-red-600 border-slate-300 rounded focus:ring-red-500 flex-shrink-0"
+                                />
+                              )}
+                            </div>
                             <p className="text-xs text-slate-500">{item.category}</p>
                           </div>
                         </div>
@@ -903,6 +999,119 @@ const Shopping: React.FC<ShoppingProps> = ({ shoppingItems, onAdd, onUpdate, onD
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão Individual */}
+      {showDeleteModal && itemToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-red-600">Confirmar Exclusão</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Tem certeza que deseja excluir este item? Esta ação não pode ser desfeita.
+              </p>
+            </div>
+            <div className="p-6">
+              {(() => {
+                const item = shoppingItems.find(i => i.id === itemToDelete);
+                if (!item) return null;
+                return (
+                  <div className="bg-slate-50 rounded-xl p-4 mb-4">
+                    <p className="font-bold text-slate-800">{item.name}</p>
+                    <p className="text-sm text-slate-600">Categoria: {item.category}</p>
+                    <p className="text-sm text-slate-600">Valor: R$ {item.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="p-6 border-t border-slate-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setItemToDelete(null);
+                }}
+                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (itemToDelete) {
+                    try {
+                      await onDelete(itemToDelete);
+                      setShowDeleteModal(false);
+                      setItemToDelete(null);
+                      // O toast já é mostrado na função onDelete
+                    } catch (error) {
+                      console.error('Erro ao excluir item:', error);
+                      showToast('Erro ao excluir item. Tente novamente.', 'error');
+                    }
+                  }
+                }}
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
+              >
+                Confirmar Exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão em Lote */}
+      {showDeleteBulkModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-red-600">Confirmar Exclusão em Lote</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Tem certeza que deseja excluir {itemsToDelete.size} item(ns) selecionado(s)? Esta ação não pode ser desfeita.
+              </p>
+            </div>
+            <div className="p-6 max-h-60 overflow-y-auto">
+              <div className="space-y-2">
+                {Array.from(itemsToDelete).map(id => {
+                  const item = shoppingItems.find(i => i.id === id);
+                  if (!item) return null;
+                  return (
+                    <div key={id} className="bg-slate-50 rounded-xl p-3">
+                      <p className="font-semibold text-slate-800">{item.name}</p>
+                      <p className="text-xs text-slate-600">{item.category}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteBulkModal(false);
+                }}
+                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const idsToDelete = Array.from(itemsToDelete);
+                  for (const id of idsToDelete) {
+                    await onDelete(id);
+                  }
+                  setShowDeleteBulkModal(false);
+                  setDeleteSelectionMode(false);
+                  setItemsToDelete(new Set());
+                  showToast(`${idsToDelete.length} item(ns) excluído(s) com sucesso!`, 'success');
+                }}
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
+              >
+                Confirmar Exclusão ({itemsToDelete.size})
+              </button>
+            </div>
           </div>
         </div>
       )}

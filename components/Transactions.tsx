@@ -7,10 +7,19 @@ interface TransactionsProps {
   transactions: Transaction[];
   onAdd: (transaction: Omit<Transaction, 'id'>) => void;
   onUpdate: (id: string, transaction: Omit<Transaction, 'id'>) => void;
-  onDelete: (id: string) => void;
+  onDelete: (id: string) => Promise<void>;
+  onDeleteByMonth?: (month: number, year: number) => Promise<void>;
+  showToast?: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
 }
 
-const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpdate, onDelete }) => {
+const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpdate, onDelete, onDeleteByMonth, showToast }) => {
+  const [showDeleteMonthModal, setShowDeleteMonthModal] = useState(false);
+  const [monthToDelete, setMonthToDelete] = useState<{ month: number; year: number; label: string } | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDeleteBulkModal, setShowDeleteBulkModal] = useState(false);
+  const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
+  const [transactionsToDelete, setTransactionsToDelete] = useState<Set<string>>(new Set());
+  const [deleteSelectionMode, setDeleteSelectionMode] = useState(false);
   // Função para obter data local no formato YYYY-MM-DD sem problemas de timezone
   const getLocalDateString = (date: Date = new Date()): string => {
     const year = date.getFullYear();
@@ -81,6 +90,15 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
 
   // Organizar transações por mês
   const transactionsByMonth = useMemo(() => {
+    // Primeiro, remover duplicatas por ID antes de agrupar
+    const uniqueTransactions = Array.from(
+      new Map(transactions.map(t => [t.id, t])).values()
+    );
+    
+    if (uniqueTransactions.length !== transactions.length) {
+      console.warn(`⚠️ Removidas ${transactions.length - uniqueTransactions.length} transações duplicadas na exibição`);
+    }
+    
     const grouped: { [key: string]: Transaction[] } = {};
     
     // Obter mês e ano atual para comparação
@@ -88,7 +106,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
     const nowMonth = now.getMonth() + 1; // 1-12
     const nowYear = now.getFullYear();
     
-    transactions.forEach(transaction => {
+    uniqueTransactions.forEach(transaction => {
       // Extrair mês e ano diretamente da string da data (formato YYYY-MM-DD) para evitar problemas de timezone
       const [yearStr, monthStr] = transaction.date.split('-');
       const year = parseInt(yearStr);
@@ -190,13 +208,50 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
             className="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm"
           />
         </div>
-        <button 
-          onClick={() => handleOpenModal()}
-          className="w-full md:w-auto flex items-center justify-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all font-semibold"
-        >
-          <Plus size={20} />
-          Nova Transação
-        </button>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          {deleteSelectionMode ? (
+            <>
+              <button
+                onClick={() => {
+                  if (transactionsToDelete.size > 0) {
+                    setShowDeleteBulkModal(true);
+                  }
+                }}
+                disabled={transactionsToDelete.size === 0}
+                className="flex items-center gap-2 bg-red-600 text-white px-6 py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 size={20} />
+                Excluir Selecionados ({transactionsToDelete.size})
+              </button>
+              <button
+                onClick={() => {
+                  setDeleteSelectionMode(false);
+                  setTransactionsToDelete(new Set());
+                }}
+                className="flex items-center gap-2 bg-slate-600 text-white px-6 py-2.5 rounded-xl hover:bg-slate-700 transition-all font-semibold"
+              >
+                Cancelar
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => setDeleteSelectionMode(true)}
+                className="flex items-center gap-2 bg-red-600 text-white px-6 py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100"
+              >
+                <Trash2 size={20} />
+                Excluir em Lote
+              </button>
+              <button 
+                onClick={() => handleOpenModal()}
+                className="w-full md:w-auto flex items-center justify-center gap-2 bg-indigo-600 text-white px-6 py-2.5 rounded-xl hover:bg-indigo-700 transition-all font-semibold"
+              >
+                <Plus size={20} />
+                Nova Transação
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {transactionsByMonth.length === 0 ? (
@@ -243,25 +298,39 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-4 text-sm">
-                      <div className="text-right">
-                        <p className="text-xs text-slate-500 font-medium">Receitas</p>
-                        <p className="font-bold text-green-600">
-                          R$ {totals.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-4 text-sm">
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500 font-medium">Receitas</p>
+                          <p className="font-bold text-green-600">
+                            R$ {totals.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500 font-medium">Despesas</p>
+                          <p className="font-bold text-red-600">
+                            R$ {totals.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500 font-medium">Saldo</p>
+                          <p className={`font-bold ${totals.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            R$ {totals.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-xs text-slate-500 font-medium">Despesas</p>
-                        <p className="font-bold text-red-600">
-                          R$ {totals.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-slate-500 font-medium">Saldo</p>
-                        <p className={`font-bold ${totals.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          R$ {totals.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
-                      </div>
+                      {onDeleteByMonth && (
+                        <button
+                          onClick={() => {
+                            setMonthToDelete({ month: transactionMonth, year: transactionYear, label: monthLabel });
+                            setShowDeleteMonthModal(true);
+                          }}
+                          className="p-2 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-lg transition-all"
+                          title="Excluir todas as transações deste mês"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -270,6 +339,23 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                   <table className="w-full text-left">
                     <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
                       <tr>
+                        {deleteSelectionMode && (
+                          <th className="px-6 py-4 w-12">
+                            <button
+                              onClick={() => {
+                                if (transactionsToDelete.size === monthTransactions.length) {
+                                  setTransactionsToDelete(new Set());
+                                } else {
+                                  setTransactionsToDelete(new Set(monthTransactions.map(t => t.id)));
+                                }
+                              }}
+                              className="text-slate-400 hover:text-indigo-600"
+                              title={transactionsToDelete.size === monthTransactions.length ? "Desmarcar Todos" : "Selecionar Todos"}
+                            >
+                              {transactionsToDelete.size === monthTransactions.length ? '☑' : '☐'}
+                            </button>
+                          </th>
+                        )}
                         <th className="px-6 py-4">Descrição</th>
                         <th className="px-6 py-4">Categoria</th>
                         <th className="px-6 py-4">Data</th>
@@ -278,45 +364,249 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
-                      {monthTransactions.map((t) => (
-                        <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
-                          <td className="px-6 py-4">
-                            <div className="font-semibold text-slate-800">{t.description}</div>
-                            <div className="text-xs text-slate-400 md:hidden">{t.category}</div>
-                          </td>
-                          <td className="px-6 py-4 text-sm text-slate-600">{t.category}</td>
-                          <td className="px-6 py-4 text-sm text-slate-600">
-                            {formatDateForDisplay(t.date)}
-                          </td>
-                          <td className={`px-6 py-4 text-right font-bold text-sm ${t.type === 'income' ? 'text-green-600' : 'text-slate-700'}`}>
-                            {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                          </td>
-                          <td className="px-6 py-4 text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              <button 
-                                onClick={() => handleOpenModal(t)}
-                                className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
-                                title="Editar transação"
-                              >
-                                <Edit2 size={18} />
-                              </button>
-                              <button 
-                                onClick={() => onDelete(t.id)}
-                                className="p-2 text-slate-400 hover:text-red-500 transition-colors"
-                                title="Excluir transação"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {monthTransactions.map((t) => {
+                        const isSelectedForDelete = transactionsToDelete.has(t.id);
+                        return (
+                          <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                            {deleteSelectionMode && (
+                              <td className="px-6 py-4">
+                                <input
+                                  type="checkbox"
+                                  checked={isSelectedForDelete}
+                                  onChange={() => {
+                                    setTransactionsToDelete(prev => {
+                                      const newSet = new Set(prev);
+                                      if (newSet.has(t.id)) {
+                                        newSet.delete(t.id);
+                                      } else {
+                                        newSet.add(t.id);
+                                      }
+                                      return newSet;
+                                    });
+                                  }}
+                                  className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                                />
+                              </td>
+                            )}
+                            <td className="px-6 py-4">
+                              <div className="font-semibold text-slate-800">{t.description}</div>
+                              <div className="text-xs text-slate-400 md:hidden">{t.category}</div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-slate-600">{t.category}</td>
+                            <td className="px-6 py-4 text-sm text-slate-600">
+                              {formatDateForDisplay(t.date)}
+                            </td>
+                            <td className={`px-6 py-4 text-right font-bold text-sm ${t.type === 'income' ? 'text-green-600' : 'text-slate-700'}`}>
+                              {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              {!deleteSelectionMode && (
+                                <div className="flex items-center justify-center gap-2">
+                                  <button 
+                                    onClick={() => handleOpenModal(t)}
+                                    className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
+                                    title="Editar transação"
+                                  >
+                                    <Edit2 size={18} />
+                                  </button>
+                                  <button 
+                                    onClick={() => {
+                                      setTransactionToDelete(t.id);
+                                      setShowDeleteModal(true);
+                                    }}
+                                    className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                    title="Excluir transação"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão Individual */}
+      {showDeleteModal && transactionToDelete && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-red-600">Confirmar Exclusão</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Tem certeza que deseja excluir esta transação? Esta ação não pode ser desfeita.
+              </p>
+            </div>
+            <div className="p-6">
+              {(() => {
+                const transaction = transactions.find(t => t.id === transactionToDelete);
+                if (!transaction) return null;
+                return (
+                  <div className="bg-slate-50 rounded-xl p-4 mb-4">
+                    <p className="font-bold text-slate-800">{transaction.description}</p>
+                    <p className="text-sm text-slate-600">Categoria: {transaction.category}</p>
+                    <p className="text-sm text-slate-600">
+                      Valor: {transaction.type === 'income' ? '+' : '-'} R$ {transaction.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </p>
+                    <p className="text-sm text-slate-600">Data: {formatDateForDisplay(transaction.date)}</p>
+                  </div>
+                );
+              })()}
+            </div>
+            <div className="p-6 border-t border-slate-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteModal(false);
+                  setTransactionToDelete(null);
+                }}
+                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (transactionToDelete) {
+                    try {
+                      await onDelete(transactionToDelete);
+                      setShowDeleteModal(false);
+                      setTransactionToDelete(null);
+                      // O toast já é mostrado na função onDelete
+                    } catch (error) {
+                      console.error('Erro ao excluir transação:', error);
+                      if (showToast) {
+                        showToast('Erro ao excluir transação. Tente novamente.', 'error');
+                      }
+                    }
+                  }
+                }}
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
+              >
+                Confirmar Exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão em Lote */}
+      {showDeleteBulkModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-red-600">Confirmar Exclusão em Lote</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Tem certeza que deseja excluir {transactionsToDelete.size} transação(ões) selecionada(s)? Esta ação não pode ser desfeita.
+              </p>
+            </div>
+            <div className="p-6 max-h-60 overflow-y-auto">
+              <div className="space-y-2">
+                {Array.from(transactionsToDelete).map(id => {
+                  const transaction = transactions.find(t => t.id === id);
+                  if (!transaction) return null;
+                  return (
+                    <div key={id} className="bg-slate-50 rounded-xl p-3">
+                      <p className="font-semibold text-slate-800">{transaction.description}</p>
+                      <p className="text-xs text-slate-600">{transaction.category} - {formatDateForDisplay(transaction.date)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteBulkModal(false);
+                }}
+                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const idsToDelete = Array.from(transactionsToDelete);
+                  try {
+                    for (const id of idsToDelete) {
+                      await onDelete(id);
+                    }
+                    setShowDeleteBulkModal(false);
+                    setDeleteSelectionMode(false);
+                    setTransactionsToDelete(new Set());
+                    if (showToast) {
+                      showToast(`${idsToDelete.length} transação(ões) excluída(s) com sucesso!`, 'success');
+                    }
+                  } catch (error) {
+                    console.error('Erro ao excluir transações:', error);
+                    if (showToast) {
+                      showToast('Erro ao excluir transações. Tente novamente.', 'error');
+                    }
+                  }
+                }}
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
+              >
+                Confirmar Exclusão ({transactionsToDelete.size})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Exclusão do Mês */}
+      {showDeleteMonthModal && monthToDelete && onDeleteByMonth && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-red-600">Confirmar Exclusão do Mês</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Tem certeza que deseja excluir todas as transações de <strong>{monthToDelete.label}</strong>? Esta ação não pode ser desfeita.
+              </p>
+            </div>
+            <div className="p-6">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
+                <p className="text-sm text-red-700">
+                  <strong>Atenção:</strong> Todas as transações deste mês serão excluídas permanentemente do banco de dados.
+                </p>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDeleteMonthModal(false);
+                  setMonthToDelete(null);
+                }}
+                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  if (monthToDelete && onDeleteByMonth) {
+                    await onDeleteByMonth(monthToDelete.month, monthToDelete.year);
+                    setShowDeleteMonthModal(false);
+                    setMonthToDelete(null);
+                    if (showToast) {
+                      showToast(`Todas as transações de ${monthToDelete.label} foram excluídas!`, 'success');
+                    }
+                  }
+                }}
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
+              >
+                Confirmar Exclusão
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
