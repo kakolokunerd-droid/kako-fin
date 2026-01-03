@@ -63,10 +63,10 @@ const Layout: React.FC<LayoutProps> = ({
 
     try {
       const notifications = await db.getNotifications(user.email);
-      const unread = notifications.filter(n => !n.isRead).length;
+      const unread = notifications.filter((n) => !n.isRead).length;
       setUnreadNotifications(unread);
     } catch (error) {
-      console.error('Erro ao carregar notificações:', error);
+      console.error("Erro ao carregar notificações:", error);
     } finally {
       isLoadingRef.current = false;
     }
@@ -76,7 +76,7 @@ const Layout: React.FC<LayoutProps> = ({
     if (user?.email) {
       // Carregar imediatamente apenas quando o email do usuário mudar
       loadUnreadCount();
-      
+
       // Atualizar a cada 1 hora (3600000ms)
       const interval = setInterval(loadUnreadCount, 3600000);
       return () => clearInterval(interval);
@@ -89,7 +89,12 @@ const Layout: React.FC<LayoutProps> = ({
     { id: "shopping", label: "Compras", icon: ShoppingCart },
     { id: "goals", label: "Metas", icon: Target },
     { id: "reports", label: "Relatórios", icon: BarChart3 },
-    { id: "notifications", label: "Informações", icon: Bell, badge: unreadNotifications > 0 ? unreadNotifications : undefined },
+    {
+      id: "notifications",
+      label: "Informações",
+      icon: Bell,
+      badge: unreadNotifications > 0 ? unreadNotifications : undefined,
+    },
     { id: "profile", label: "Perfil", icon: User },
     ...(isAdmin ? [{ id: "admin", label: "Admin", icon: Settings }] : []),
   ];
@@ -120,10 +125,14 @@ const Layout: React.FC<LayoutProps> = ({
 
   const handleCopyPix = async () => {
     try {
-      await navigator.clipboard.writeText("61992459777");
-      alert("PIX copiado! Chave: 61992459777");
+      await navigator.clipboard.writeText(
+        "78b60641-9574-42f8-bad4-d9709b49dc61"
+      );
+      alert("PIX copiado! Chave: 78b60641-9574-42f8-bad4-d9709b49dc61");
     } catch (err) {
-      alert("Chave PIX: 61992459777\n(Copie manualmente)");
+      alert(
+        "Chave PIX: 78b60641-9574-42f8-bad4-d9709b49dc61\n(Copie manualmente)"
+      );
     }
   };
 
@@ -153,7 +162,7 @@ const Layout: React.FC<LayoutProps> = ({
               </div>
               {item.badge && item.badge > 0 && (
                 <span className="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded-full min-w-[20px] text-center">
-                  {item.badge > 99 ? '99+' : item.badge}
+                  {item.badge > 99 ? "99+" : item.badge}
                 </span>
               )}
             </button>
@@ -189,7 +198,7 @@ const Layout: React.FC<LayoutProps> = ({
                     className="font-bold bg-white/20 px-2 py-0.5 rounded cursor-pointer hover:bg-white/30 transition-all"
                     onClick={handleCopyPix}
                   >
-                    61992459777
+                    78b60641-9574-42f8-bad4-d9709b49dc61
                   </span>
                   <span className="text-xs ml-2 opacity-90">
                     (Não é obrigatório, mas ajuda muito!)
@@ -272,7 +281,7 @@ const Layout: React.FC<LayoutProps> = ({
                   <item.icon size={20} />
                   {item.badge && item.badge > 0 && (
                     <span className="absolute -top-1 -right-1 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[16px] text-center">
-                      {item.badge > 99 ? '99+' : item.badge}
+                      {item.badge > 99 ? "99+" : item.badge}
                     </span>
                   )}
                 </div>
