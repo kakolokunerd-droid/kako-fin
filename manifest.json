@@ -1,0 +1,51 @@
+{
+  "name": "Kako Fin - Controle suas Finanças",
+  "short_name": "Kako Fin",
+  "description": "Plataforma completa de finanças pessoais com insights inteligentes, controle de gastos, metas financeiras e relatórios detalhados",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ],
+  "categories": ["finance", "productivity", "business"],
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "description": "Ver seu resumo financeiro",
+      "url": "/?tab=dashboard",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Transações",
+      "short_name": "Transações",
+      "description": "Gerenciar transações",
+      "url": "/?tab=transactions",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Compras",
+      "short_name": "Compras",
+      "description": "Lista de compras",
+      "url": "/?tab=shopping",
+      "icons": [{ "src": "/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}
+

@@ -9,6 +9,7 @@ import Profile from './components/Profile';
 import Admin from './components/Admin';
 import Shopping from './components/Shopping';
 import Notifications from './components/Notifications';
+import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { ToastContainer, useToast } from './components/Toast';
 import { db } from './services/db';
 import { AuthState, Transaction, Goal, UserProfile, Category, ShoppingItem } from './types';
@@ -589,6 +590,7 @@ const App: React.FC = () => {
   return (
     <>
       <ToastContainer toasts={toasts} onClose={removeToast} />
+      <PWAInstallPrompt />
       <Layout activeTab={activeTab} setActiveTab={setActiveTab} onLogout={handleLogout} user={auth.user!}>
         <div className="relative">
         {isLoading && (
