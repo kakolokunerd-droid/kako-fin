@@ -3,7 +3,12 @@
 
 import { Transaction, Goal } from "../types";
 
-export type AIProvider = "groq" | "huggingface" | "openai" | "gemini" | "ollama";
+export type AIProvider =
+  | "groq"
+  | "huggingface"
+  | "openai"
+  | "gemini"
+  | "ollama";
 
 interface AIConfig {
   provider: AIProvider;
@@ -16,16 +21,29 @@ interface AIConfig {
 const getAIConfig = (): AIConfig => {
   // Prioridade: variável de ambiente > padrão
   const provider = (import.meta.env.VITE_AI_PROVIDER || "groq") as AIProvider;
-  
-  const apiKey = import.meta.env.VITE_AI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY || "";
-  
+
+  const apiKey =
+    import.meta.env.VITE_AI_API_KEY ||
+    process.env.API_KEY ||
+    process.env.GEMINI_API_KEY ||
+    "";
+
   // Log para debug (sem expor a chave completa)
   console.log("🔍 Configuração de IA:");
   console.log("🔍 Provedor:", provider);
-  console.log("🔍 API Key presente:", apiKey ? `Sim (${apiKey.substring(0, 10)}...)` : "Não");
-  console.log("🔍 VITE_AI_API_KEY:", import.meta.env.VITE_AI_API_KEY ? "Presente" : "Ausente");
-  console.log("🔍 process.env.API_KEY:", process.env.API_KEY ? "Presente" : "Ausente");
-  
+  console.log(
+    "🔍 API Key presente:",
+    apiKey ? `Sim (${apiKey.substring(0, 10)}...)` : "Não"
+  );
+  console.log(
+    "🔍 VITE_AI_API_KEY:",
+    import.meta.env.VITE_AI_API_KEY ? "Presente" : "Ausente"
+  );
+  console.log(
+    "🔍 process.env.API_KEY:",
+    process.env.API_KEY ? "Presente" : "Ausente"
+  );
+
   return {
     provider,
     apiKey,
@@ -79,17 +97,27 @@ export const getFinancialAdvice = async (
     }
   } catch (error: any) {
     console.error(`❌ Erro ao chamar ${config.provider}:`, error);
-    
-    let errorMessage = "Mantenha o foco! Analise suas categorias de maior gasto para economizar mais este mês.";
-    
-    if (error?.message?.includes("API_KEY") || error?.message?.includes("401")) {
-      errorMessage = "⚠️ Erro na configuração da API. Verifique se a chave está configurada corretamente.";
-    } else if (error?.message?.includes("quota") || error?.message?.includes("limit") || error?.message?.includes("429")) {
-      errorMessage = "⚠️ Limite de uso da API atingido. Tente novamente mais tarde.";
+
+    let errorMessage =
+      "Mantenha o foco! Analise suas categorias de maior gasto para economizar mais este mês.";
+
+    if (
+      error?.message?.includes("API_KEY") ||
+      error?.message?.includes("401")
+    ) {
+      errorMessage =
+        "⚠️ Erro na configuração da API. Verifique se a chave está configurada corretamente.";
+    } else if (
+      error?.message?.includes("quota") ||
+      error?.message?.includes("limit") ||
+      error?.message?.includes("429")
+    ) {
+      errorMessage =
+        "⚠️ Limite de uso da API atingido. Tente novamente mais tarde.";
     } else if (error?.message) {
       errorMessage = `⚠️ Erro ao gerar insights: ${error.message}`;
     }
-    
+
     return errorMessage;
   }
 };
@@ -103,42 +131,55 @@ async function getGroqAdvice(
 ): Promise<string> {
   // Verificar se a API key está presente
   if (!config.apiKey) {
-    throw new Error("Groq API key não configurada. Configure VITE_AI_API_KEY no .env.local");
+    throw new Error(
+      "Groq API key não configurada. Configure VITE_AI_API_KEY no .env.local"
+    );
   }
 
   // Log para debug (sem expor a chave completa)
   console.log("🔍 Groq - Verificando configuração...");
-  console.log("🔍 API Key presente:", config.apiKey ? `Sim (${config.apiKey.substring(0, 10)}...)` : "Não");
+  console.log(
+    "🔍 API Key presente:",
+    config.apiKey ? `Sim (${config.apiKey.substring(0, 10)}...)` : "Não"
+  );
   console.log("🔍 Modelo:", config.model || "llama-3.3-70b-versatile");
 
   const prompt = buildPrompt(transactions, goals);
 
   try {
-    const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model || "llama-3.1-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content: "Você é um consultor financeiro sênior especializado em ajudar pessoas a melhorar suas finanças pessoais. Seja empático, prático e motivador.",
-          },
-          {
-            role: "user",
-            content: prompt,
-          },
-        ],
-        temperature: 0.7,
-        max_tokens: 500,
-      }),
-    });
+    const response = await fetch(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${config.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: config.model || "llama-3.1-70b-versatile",
+          messages: [
+            {
+              role: "system",
+              content:
+                "Você é um consultor financeiro sênior especializado em ajudar pessoas a melhorar suas finanças pessoais. Seja empático, prático e motivador.",
+            },
+            {
+              role: "user",
+              content: prompt,
+            },
+          ],
+          temperature: 0.7,
+          max_tokens: 500,
+        }),
+      }
+    );
 
     // Log da resposta para debug
-    console.log("📤 Groq - Status da resposta:", response.status, response.statusText);
+    console.log(
+      "📤 Groq - Status da resposta:",
+      response.status,
+      response.statusText
+    );
 
     if (!response.ok) {
       // Tentar obter detalhes do erro
@@ -155,25 +196,41 @@ async function getGroqAdvice(
 
       // Mensagens de erro mais específicas
       if (response.status === 401) {
-        throw new Error("API key inválida ou expirada. Verifique se a chave está correta no .env.local");
+        throw new Error(
+          "API key inválida ou expirada. Verifique se a chave está correta no .env.local"
+        );
       } else if (response.status === 429) {
-        throw new Error("Limite de requisições atingido. Tente novamente mais tarde.");
+        throw new Error(
+          "Limite de requisições atingido. Tente novamente mais tarde."
+        );
       } else if (response.status === 400) {
-        throw new Error(`Requisição inválida: ${errorDetails.message || errorDetails.error?.message || "Verifique os parâmetros"}`);
+        throw new Error(
+          `Requisição inválida: ${
+            errorDetails.message ||
+            errorDetails.error?.message ||
+            "Verifique os parâmetros"
+          }`
+        );
       } else {
-        throw new Error(`Groq API error (${response.status}): ${errorDetails.message || errorDetails.error?.message || response.statusText}`);
+        throw new Error(
+          `Groq API error (${response.status}): ${
+            errorDetails.message ||
+            errorDetails.error?.message ||
+            response.statusText
+          }`
+        );
       }
     }
 
     const data = await response.json();
     console.log("✅ Groq - Resposta recebida com sucesso");
-    
+
     const content = data.choices?.[0]?.message?.content;
     if (!content) {
       console.warn("⚠️ Groq - Resposta sem conteúdo:", data);
       return "Não foi possível gerar sugestões no momento. Continue controlando seus gastos!";
     }
-    
+
     return content;
   } catch (error: any) {
     console.error("❌ Groq - Erro na requisição:", error);
@@ -191,7 +248,9 @@ async function getHuggingFaceAdvice(
   const prompt = buildPrompt(transactions, goals);
 
   const response = await fetch(
-    `https://api-inference.huggingface.co/models/${config.model || "mistralai/Mistral-7B-Instruct-v0.2"}`,
+    `https://api-inference.huggingface.co/models/${
+      config.model || "mistralai/Mistral-7B-Instruct-v0.2"
+    }`,
     {
       method: "POST",
       headers: {
@@ -209,8 +268,12 @@ async function getHuggingFaceAdvice(
   );
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(`Hugging Face API error: ${error.message || response.statusText}`);
+    const error = await response
+      .json()
+      .catch(() => ({ message: response.statusText }));
+    throw new Error(
+      `Hugging Face API error: ${error.message || response.statusText}`
+    );
   }
 
   const data = await response.json();
@@ -240,7 +303,8 @@ async function getOpenAIAdvice(
       messages: [
         {
           role: "system",
-          content: "Você é um consultor financeiro sênior especializado em ajudar pessoas a melhorar suas finanças pessoais. Seja empático, prático e motivador.",
+          content:
+            "Você é um consultor financeiro sênior especializado em ajudar pessoas a melhorar suas finanças pessoais. Seja empático, prático e motivador.",
         },
         {
           role: "user",
@@ -253,12 +317,19 @@ async function getOpenAIAdvice(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(`OpenAI API error: ${error.message || response.statusText}`);
+    const error = await response
+      .json()
+      .catch(() => ({ message: response.statusText }));
+    throw new Error(
+      `OpenAI API error: ${error.message || response.statusText}`
+    );
   }
 
   const data = await response.json();
-  return data.choices[0]?.message?.content || "Não foi possível gerar sugestões no momento.";
+  return (
+    data.choices[0]?.message?.content ||
+    "Não foi possível gerar sugestões no momento."
+  );
 }
 
 // ========== GEMINI (Original - Requer faturamento) ==========
@@ -376,4 +447,3 @@ function buildPrompt(transactions: Transaction[], goals: Goal[]): string {
     Seja empático e motivador. Formate em tópicos curtos. Foque nas ações para o mês atual.
   `;
 }
-
