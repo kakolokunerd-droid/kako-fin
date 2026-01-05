@@ -12,8 +12,10 @@ import Notifications from './components/Notifications';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import { ToastContainer, useToast } from './components/Toast';
 import { db } from './services/db';
+import { generateTemporaryPassword } from './services/passwordService';
+import { sendPasswordRecoveryEmail } from './services/emailService';
 import { AuthState, Transaction, Goal, UserProfile, Category, ShoppingItem } from './types';
-import { Wallet, LogIn, UserPlus, Loader2, Eye, EyeOff } from 'lucide-react';
+import { Wallet, LogIn, UserPlus, Loader2, Eye, EyeOff, Mail, X } from 'lucide-react';
 
 const App: React.FC = () => {
   const { toasts, showToast, removeToast } = useToast();
@@ -30,6 +32,10 @@ const App: React.FC = () => {
   const [isRegistering, setIsRegistering] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recoveryEmail, setRecoveryEmail] = useState('');
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState('');
   
   // App Data
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -178,35 +184,38 @@ const App: React.FC = () => {
     const email = formData.get('email') as string;
     const pass = formData.get('password') as string;
     
-    // Buscar perfil e senha do usuário
+    // Buscar perfil do usuário
     const profile = await db.getProfile(email);
-    const savedPassword = await db.getPassword(email);
     
-    // Se não existe senha salva, pode ser um usuário novo ou senha padrão antiga
-    if (!savedPassword) {
+    // Verificar senha usando hash
+    const isValidPassword = await db.verifyPassword(email, pass);
+    
+    if (!isValidPassword) {
       // Verificar se existe perfil mas sem senha (migração de usuários antigos)
       if (profile) {
-        alert('Usuário encontrado, mas sem senha cadastrada. Por favor, faça o cadastro novamente ou use a senha padrão: 123456');
-        // Permitir login com senha padrão para migração
-        if (pass === '123456') {
-          await db.savePassword(email, pass);
-          setAuth({
-            isAuthenticated: true,
-            user: profile
-          });
+        const savedPassword = await db.getPassword(email);
+        if (!savedPassword) {
+          // Tentar senha padrão antiga para migração
+          if (pass === '123456') {
+            await db.savePassword(email, pass);
+            setAuth({
+              isAuthenticated: true,
+              user: profile
+            });
+          } else {
+            alert('Senha incorreta!');
+          }
         } else {
           alert('Senha incorreta!');
         }
       } else {
         alert('Usuário não encontrado. Por favor, faça o cadastro primeiro.');
       }
-    } else if (pass === savedPassword) {
+    } else {
       setAuth({
         isAuthenticated: true,
         user: profile || { name: 'Usuário', email, currency: 'BRL', role: 'user' }
       });
-    } else {
-      alert('Senha incorreta!');
     }
     setIsLoading(false);
   };
@@ -524,12 +533,58 @@ const App: React.FC = () => {
   const changePassword = async (oldP: string, newP: string): Promise<boolean> => {
     if (!auth.user) return false;
     
-    const savedPassword = await db.getPassword(auth.user.email);
-    if (savedPassword && oldP === savedPassword) {
+    const isValidPassword = await db.verifyPassword(auth.user.email, oldP);
+    if (isValidPassword) {
       await db.savePassword(auth.user.email, newP);
       return true;
     }
     return false;
+  };
+
+  const handlePasswordRecovery = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRecoveryLoading(true);
+    setRecoveryMessage('');
+
+    try {
+      // Verificar se o email existe
+      const profile = await db.getProfile(recoveryEmail);
+      if (!profile) {
+        setRecoveryMessage('Email não encontrado. Verifique se o email está correto.');
+        setRecoveryLoading(false);
+        return;
+      }
+
+      // Gerar senha provisória
+      const temporaryPassword = generateTemporaryPassword();
+
+      // Salvar senha provisória (já com hash)
+      await db.recoverPassword(recoveryEmail, temporaryPassword);
+
+      // Enviar email automaticamente
+      const result = await sendPasswordRecoveryEmail(
+        recoveryEmail,
+        temporaryPassword,
+        profile.name
+      );
+      
+      if (result.success) {
+        setRecoveryMessage(`✅ ${result.message}\n\nPor favor, verifique sua caixa de entrada e também a pasta de spam. A senha provisória expira após o primeiro login, quando você poderá alterá-la.`);
+        setRecoveryEmail('');
+        setTimeout(() => {
+          setShowRecovery(false);
+          setRecoveryMessage('');
+        }, 8000);
+      } else {
+        setRecoveryMessage(`❌ ${result.message}`);
+      }
+    } catch (error: any) {
+      console.error('Erro ao recuperar senha:', error);
+      const errorMessage = error?.message || 'Erro ao processar recuperação de senha. Tente novamente.';
+      setRecoveryMessage(`❌ ${errorMessage}\n\nVerifique o console do navegador (F12) para mais detalhes.`);
+    } finally {
+      setRecoveryLoading(false);
+    }
   };
 
   if (!auth.isAuthenticated) {
@@ -579,10 +634,102 @@ const App: React.FC = () => {
             </button>
           </form>
 
-          <button onClick={() => setIsRegistering(!isRegistering)} className="w-full mt-6 text-sm font-semibold text-indigo-600 text-center">
+          {!isRegistering && (
+            <button 
+              onClick={() => setShowRecovery(true)} 
+              className="w-full mt-4 text-sm text-slate-500 hover:text-indigo-600 text-center transition-colors"
+            >
+              Esqueci minha senha
+            </button>
+          )}
+
+          <button onClick={() => setIsRegistering(!isRegistering)} className="w-full mt-4 text-sm font-semibold text-indigo-600 text-center">
             {isRegistering ? 'Já tem conta? Login' : 'Novo por aqui? Criar conta'}
           </button>
         </div>
+
+        {/* Modal de Recuperação de Senha */}
+        {showRecovery && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+            <div className="bg-white rounded-3xl shadow-xl p-8 max-w-md w-full border border-slate-100">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                    <Mail className="text-indigo-600" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-slate-800">Recuperar Senha</h2>
+                    <p className="text-sm text-slate-500">Enviaremos uma senha provisória</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setShowRecovery(false);
+                    setRecoveryEmail('');
+                    setRecoveryMessage('');
+                  }}
+                  className="text-slate-400 hover:text-slate-600 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
+
+              {recoveryMessage ? (
+                <div className="space-y-4">
+                  <div className={`p-4 rounded-xl ${recoveryMessage.includes('✅') ? 'bg-green-50 border border-green-200' : 'bg-red-50 border border-red-200'}`}>
+                    <p className="text-sm whitespace-pre-line">{recoveryMessage}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setShowRecovery(false);
+                      setRecoveryEmail('');
+                      setRecoveryMessage('');
+                    }}
+                    className="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl hover:bg-indigo-700 transition-all"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handlePasswordRecovery} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                      E-mail cadastrado
+                    </label>
+                    <input
+                      type="email"
+                      value={recoveryEmail}
+                      onChange={(e) => setRecoveryEmail(e.target.value)}
+                      required
+                      placeholder="seu@email.com"
+                      className="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <p className="text-xs text-slate-400 mt-1">
+                      Enviaremos uma senha provisória para este email
+                    </p>
+                  </div>
+                  <button
+                    type="submit"
+                    disabled={recoveryLoading}
+                    className="w-full bg-indigo-600 text-white font-bold py-3.5 rounded-xl hover:bg-indigo-700 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {recoveryLoading ? (
+                      <>
+                        <Loader2 className="animate-spin" size={20} />
+                        Processando...
+                      </>
+                    ) : (
+                      <>
+                        <Mail size={20} />
+                        Enviar Senha Provisória
+                      </>
+                    )}
+                  </button>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     );
   }

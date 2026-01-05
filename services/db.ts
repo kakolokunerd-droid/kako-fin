@@ -1,6 +1,8 @@
 import { Transaction, Goal, UserProfile, Notification } from "../types";
 import { supabase } from "./supabaseClient";
 
+import { hashPassword, verifyPassword } from './passwordService';
+
 class CloudDatabase {
   // Cache para evitar verificação repetida
   private supabaseConfiguredCache: boolean | null = null;
@@ -384,7 +386,7 @@ class CloudDatabase {
     }
   }
 
-  // Busca de senha do usuário
+  // Busca de senha do usuário (retorna hash)
   async getPassword(email: string): Promise<string | null> {
     // Primeiro tentar buscar do Supabase
     if (this.isSupabaseConfigured()) {
@@ -409,6 +411,29 @@ class CloudDatabase {
     // Fallback para localStorage
     const password = localStorage.getItem(`fintrack_password_${email}`);
     return password;
+  }
+
+  // Verifica se a senha está correta
+  async verifyPassword(email: string, password: string): Promise<boolean> {
+    const hashedPassword = await this.getPassword(email);
+    if (!hashedPassword) {
+      return false;
+    }
+    
+    // Verificar se é hash (contém :) ou senha antiga em texto plano (para migração)
+    if (hashedPassword.includes(':')) {
+      // É um hash, usar verificação
+      return await verifyPassword(password, hashedPassword);
+    } else {
+      // Senha antiga em texto plano (migração)
+      if (password === hashedPassword) {
+        // Migrar para hash
+        const newHash = await hashPassword(password);
+        await this.savePassword(email, newHash);
+        return true;
+      }
+      return false;
+    }
   }
 
   // Deletar uma transação específica por ID
@@ -565,17 +590,23 @@ class CloudDatabase {
     }
   }
 
-  // Salvamento de senha do usuário
-  async savePassword(email: string, password: string): Promise<void> {
+  // Salvamento de senha do usuário (com hash automático)
+  async savePassword(email: string, password: string, isHashed: boolean = false): Promise<void> {
+    // Se não estiver hasheada, fazer hash
+    let passwordToSave = password;
+    if (!isHashed && !password.includes(':')) {
+      passwordToSave = await hashPassword(password);
+    }
+
     // Salvar no localStorage primeiro (cache local)
-    localStorage.setItem(`fintrack_password_${email}`, password);
+    localStorage.setItem(`fintrack_password_${email}`, passwordToSave);
 
     // Se Supabase estiver configurado, salvar também lá
     if (this.isSupabaseConfigured()) {
       try {
         const { error } = await supabase
           .from("profiles")
-          .update({ password: password })
+          .update({ password: passwordToSave })
           .eq("email", email);
 
         if (error) {
@@ -583,7 +614,7 @@ class CloudDatabase {
           // Tentar inserir se não existir
           const { error: insertError } = await supabase
             .from("profiles")
-            .upsert({ email, password }, { onConflict: "email" });
+            .upsert({ email, password: passwordToSave }, { onConflict: "email" });
 
           if (insertError) {
             console.error("❌ Erro ao inserir senha no Supabase:", insertError);
@@ -596,6 +627,18 @@ class CloudDatabase {
       } catch (error) {
         console.error("Erro ao salvar senha no Supabase:", error);
       }
+    }
+  }
+
+  // Recuperação de senha - gera e salva senha provisória
+  async recoverPassword(email: string, temporaryPassword: string): Promise<boolean> {
+    try {
+      // Salvar senha provisória (já hasheada)
+      await this.savePassword(email, temporaryPassword);
+      return true;
+    } catch (error) {
+      console.error("Erro ao recuperar senha:", error);
+      return false;
     }
   }
 
