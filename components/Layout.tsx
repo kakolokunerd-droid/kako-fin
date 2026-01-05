@@ -35,7 +35,7 @@ const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [showSupportBanner, setShowSupportBanner] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const APP_VERSION = "1.0.0"; // Versão do app
+  const APP_VERSION = "1.0.1"; // Versão do app
   const lastLoadTimeRef = useRef<number>(0);
   const isLoadingRef = useRef<boolean>(false);
 
