@@ -10,7 +10,7 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { Transaction, Goal } from "../types";
-import { getFinancialAdvice } from "../services/geminiService";
+import { getFinancialAdvice } from "../services/aiService";
 import {
   LineChart,
   Line,

@@ -11,13 +11,17 @@ export default defineConfig(({ mode }) => {
       },
       plugins: [react()],
       define: {
-        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
-        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.VITE_AI_API_KEY),
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY || env.VITE_AI_API_KEY),
         'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(env.VITE_SUPABASE_URL),
         'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(env.VITE_SUPABASE_ANON_KEY),
         'import.meta.env.VITE_EMAILJS_SERVICE_ID': JSON.stringify(env.VITE_EMAILJS_SERVICE_ID),
         'import.meta.env.VITE_EMAILJS_TEMPLATE_ID': JSON.stringify(env.VITE_EMAILJS_TEMPLATE_ID),
-        'import.meta.env.VITE_EMAILJS_PUBLIC_KEY': JSON.stringify(env.VITE_EMAILJS_PUBLIC_KEY)
+        'import.meta.env.VITE_EMAILJS_PUBLIC_KEY': JSON.stringify(env.VITE_EMAILJS_PUBLIC_KEY),
+        'import.meta.env.VITE_AI_PROVIDER': JSON.stringify(env.VITE_AI_PROVIDER),
+        'import.meta.env.VITE_AI_API_KEY': JSON.stringify(env.VITE_AI_API_KEY),
+        'import.meta.env.VITE_AI_MODEL': JSON.stringify(env.VITE_AI_MODEL),
+        'import.meta.env.VITE_AI_BASE_URL': JSON.stringify(env.VITE_AI_BASE_URL),
       },
       resolve: {
         alias: {
