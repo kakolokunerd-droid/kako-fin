@@ -6,15 +6,18 @@ import {
   BrainCircuit,
   Sparkles,
   Loader2,
-  Heart,
-  Copy,
-  X,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { Transaction, Goal } from "../types";
 import { getFinancialAdvice } from "../services/geminiService";
 import {
   LineChart,
   Line,
+  BarChart,
+  Bar,
+  ComposedChart,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -32,7 +35,8 @@ interface DashboardProps {
 const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
   const [advice, setAdvice] = useState<string>("");
   const [loadingAdvice, setLoadingAdvice] = useState<boolean>(true);
-  const [showSupportBanner, setShowSupportBanner] = useState(false);
+  const [isInsightsExpanded, setIsInsightsExpanded] = useState<boolean>(false);
+  const [shouldShowInsights, setShouldShowInsights] = useState<boolean>(false);
 
   // Função para formatar data para exibição sem problemas de timezone
   const formatDateForDisplay = (dateString: string): string => {
@@ -41,11 +45,11 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
     return `${day}/${month}/${year}`;
   };
 
-  // Verificar a cada minuto se deve mostrar o banner
+  // Verificar se deve mostrar os Insights (apenas para quem contribuiu)
   useEffect(() => {
-    const checkBanner = () => {
+    const checkInsights = () => {
       if (!user?.lastContributionDate) {
-        setShowSupportBanner(true);
+        setShouldShowInsights(false);
         return;
       }
 
@@ -55,41 +59,16 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
         (now.getTime() - lastContribution.getTime()) / (1000 * 60 * 60 * 24)
       );
 
-      setShowSupportBanner(daysSinceContribution >= 30);
+      // Mostra apenas se contribuiu há menos de 30 dias
+      setShouldShowInsights(daysSinceContribution < 30);
     };
 
-    checkBanner(); // Verificar imediatamente
+    checkInsights(); // Verificar imediatamente
 
-    const interval = setInterval(checkBanner, 120000); // Verificar a cada 2 minutos
+    const interval = setInterval(checkInsights, 120000); // Verificar a cada 2 minutos
 
     return () => clearInterval(interval);
   }, [user?.lastContributionDate]);
-
-  const handleCopyPix = async () => {
-    try {
-      await navigator.clipboard.writeText(
-        "78b60641-9574-42f8-bad4-d9709b49dc61"
-      );
-      alert("PIX copiado! Chave: 78b60641-9574-42f8-bad4-d9709b49dc61");
-    } catch (err) {
-      // Fallback para navegadores que não suportam clipboard API
-      const textArea = document.createElement("textarea");
-      textArea.value = "78b60641-9574-42f8-bad4-d9709b49dc61";
-      textArea.style.position = "fixed";
-      textArea.style.opacity = "0";
-      document.body.appendChild(textArea);
-      textArea.select();
-      try {
-        document.execCommand("copy");
-        alert("PIX copiado! Chave: 78b60641-9574-42f8-bad4-d9709b49dc61");
-      } catch (e) {
-        alert(
-          "Chave PIX: 78b60641-9574-42f8-bad4-d9709b49dc61\n(Copie manualmente)"
-        );
-      }
-      document.body.removeChild(textArea);
-    }
-  };
 
   // Calcular totais apenas do mês atual
   const getCurrentMonthTransactions = () => {
@@ -117,43 +96,207 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
     .reduce((acc, t) => acc + t.amount, 0);
   const balance = totalIncome - totalExpense;
 
-  // Dados para gráfico de evolução semanal
-  const getWeeklyEvolution = () => {
-    const last7Days = Array.from({ length: 7 }).map((_, i) => {
-      const d = new Date();
-      d.setDate(d.getDate() - (6 - i));
-      d.setHours(0, 0, 0, 0);
-      return {
-        dateObj: d,
-        date: d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }),
-      };
-    });
+  // Dados para gráfico de evolução por semanas do mês corrente
+  const getMonthlyEvolution = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentYear = now.getFullYear();
+    
+    // Obter primeiro e último dia do mês atual
+    const firstDay = new Date(currentYear, currentMonth - 1, 1);
+    const lastDay = new Date(currentYear, currentMonth, 0);
+    
+    // Dividir o mês em semanas (segunda a domingo)
+    const weeks: { start: Date; end: Date; label: string }[] = [];
+    const monthName = firstDay.toLocaleDateString('pt-BR', { month: 'short' });
+    
+    // Encontrar a primeira segunda-feira do mês (ou usar o dia 1 se for segunda)
+    let weekStart = new Date(firstDay);
+    const firstDayOfWeek = firstDay.getDay(); // 0 = domingo, 1 = segunda, ..., 6 = sábado
+    
+    // Se o primeiro dia não for segunda, encontrar a segunda-feira anterior
+    if (firstDayOfWeek !== 1) {
+      const daysToMonday = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+      weekStart = new Date(firstDay);
+      weekStart.setDate(firstDay.getDate() - daysToMonday);
+    }
+    
+    // Se a segunda-feira anterior for antes do mês, começar no dia 1
+    if (weekStart < firstDay) {
+      weekStart = new Date(firstDay);
+    }
+    
+    // Criar semanas até cobrir todo o mês
+    while (weekStart <= lastDay) {
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 6); // Domingo
+      
+      // Ajustar se ultrapassar o último dia do mês
+      if (weekEnd > lastDay) {
+        weekEnd.setTime(lastDay.getTime());
+      }
+      
+      // Ajustar início se for antes do primeiro dia
+      const actualStart = weekStart < firstDay ? new Date(firstDay) : new Date(weekStart);
+      
+      // Criar label
+      const startDay = String(actualStart.getDate()).padStart(2, '0');
+      const endDay = String(weekEnd.getDate()).padStart(2, '0');
+      const label = `${startDay}-${endDay} ${monthName}`;
+      
+      weeks.push({
+        start: actualStart,
+        end: new Date(weekEnd),
+        label
+      });
+      
+      // Próxima semana começa na segunda-feira seguinte
+      weekStart.setDate(weekStart.getDate() + 7);
+    }
 
-    return last7Days.map(({ dateObj, date }) => {
-      const dayTransactions = transactions.filter((t) => {
-        // Extrair data diretamente da string para evitar problemas de timezone
-        const [tYear, tMonth, tDay] = t.date.split("-").map(Number);
-        const dateStr = `${tYear}-${String(tMonth).padStart(2, "0")}-${String(
-          tDay
-        ).padStart(2, "0")}`;
-        const tDate = new Date(dateStr + "T00:00:00");
-        tDate.setHours(0, 0, 0, 0);
-        return tDate.getTime() === dateObj.getTime();
+    return weeks.map(({ start, end, label }) => {
+      // Normalizar datas de início e fim da semana (sem horas)
+      const startDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+      const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+      
+      // Filtrar transações do mês corrente que estão nesta semana
+      const weekTransactions = transactions.filter(t => {
+        const [tYearStr, tMonthStr, tDayStr] = t.date.split('-');
+        const tYear = parseInt(tYearStr);
+        const tMonth = parseInt(tMonthStr); // 1-12
+        const tDay = parseInt(tDayStr);
+        
+        // Verificar se é do mês corrente
+        if (tMonth !== currentMonth || tYear !== currentYear) {
+          return false;
+        }
+        
+        // Verificar se está dentro da semana (comparar apenas datas, sem horas)
+        const tDate = new Date(tYear, tMonth - 1, tDay);
+        const tDateOnly = new Date(tDate.getFullYear(), tDate.getMonth(), tDate.getDate());
+        
+        return tDateOnly >= startDate && tDateOnly <= endDate;
       });
 
+      const receita = weekTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
+      const despesa = weekTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
+      
       return {
-        date,
-        receita: dayTransactions
-          .filter((t) => t.type === "income")
-          .reduce((a, b) => a + b.amount, 0),
-        despesa: dayTransactions
-          .filter((t) => t.type === "expense")
-          .reduce((a, b) => a + b.amount, 0),
+        date: label,
+        receita,
+        despesa,
+        saldo: receita - despesa,
       };
     });
   };
 
-  const weeklyEvolution = getWeeklyEvolution();
+  const monthlyEvolution = getMonthlyEvolution();
+  
+  // Dados para gráfico de saldo do mês corrente (com saldo positivo/negativo)
+  const getBalanceEvolution = () => {
+    const now = new Date();
+    const currentMonth = now.getMonth() + 1; // 1-12
+    const currentYear = now.getFullYear();
+    
+    // Obter primeiro e último dia do mês atual
+    const firstDay = new Date(currentYear, currentMonth - 1, 1);
+    const lastDay = new Date(currentYear, currentMonth, 0);
+    const today = new Date();
+    const lastDayToShow = today > lastDay ? lastDay : today; // Não mostrar além de hoje
+    
+    // Calcular saldo acumulado dia a dia
+    const dailyBalance: { date: Date; saldoAcumulado: number }[] = [];
+    let saldoAcumulado = 0;
+    
+    // Iterar por cada dia do mês até hoje
+    for (let day = 1; day <= lastDayToShow.getDate(); day++) {
+      const currentDate = new Date(currentYear, currentMonth - 1, day);
+      
+      // Filtrar transações até este dia (inclusive)
+      const transactionsUntilDate = transactions.filter(t => {
+        const [tYearStr, tMonthStr, tDayStr] = t.date.split('-');
+        const tYear = parseInt(tYearStr);
+        const tMonth = parseInt(tMonthStr);
+        const tDay = parseInt(tDayStr);
+        
+        if (tMonth !== currentMonth || tYear !== currentYear) return false;
+        return tDay <= day;
+      });
+      
+      const receita = transactionsUntilDate.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
+      const despesa = transactionsUntilDate.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
+      saldoAcumulado = receita - despesa;
+      
+      dailyBalance.push({
+        date: new Date(currentDate),
+        saldoAcumulado
+      });
+    }
+    
+    // Calcular totais do mês para validação
+    const totalReceitaMes = monthlyEvolution.reduce((sum, week) => sum + week.receita, 0);
+    const totalDespesaMes = monthlyEvolution.reduce((sum, week) => sum + week.despesa, 0);
+    const totalSaldoMes = totalReceitaMes - totalDespesaMes;
+    
+    // Mapear semanas com dados diários para o saldo acumulado
+    const weeksData = monthlyEvolution.map((week, index) => {
+      // Encontrar o último dia da semana
+      const weekEndDate = week.end || new Date();
+      const weekEndDay = weekEndDate.getDate();
+      
+      // Encontrar o saldo acumulado no último dia da semana
+      const balanceAtWeekEnd = dailyBalance.find(db => db.date.getDate() === weekEndDay);
+      const saldoAcumuladoSemana = balanceAtWeekEnd ? balanceAtWeekEnd.saldoAcumulado : 0;
+      
+      return {
+        ...week,
+        saldoAcumulado: saldoAcumuladoSemana,
+        saldoSemana: week.saldo,
+        // Adicionar total do mês para referência
+        totalReceitaMes,
+        totalDespesaMes,
+        totalSaldoMes,
+      };
+    });
+    
+    // Criar array combinado: semanas para barras + dias para linha
+    // Para cada semana, adicionar também os pontos diários do saldo acumulado
+    const combinedData: any[] = [];
+    
+    monthlyEvolution.forEach((week, weekIndex) => {
+      // Adicionar ponto da semana (para as barras)
+      combinedData.push({
+        ...week,
+        saldoAcumulado: null, // Não mostrar na semana, apenas nos dias
+        isWeek: true,
+      });
+      
+      // Adicionar pontos diários desta semana (para a linha) - todos os dias
+      const weekStartDay = week.start ? week.start.getDate() : 1;
+      const weekEndDay = week.end ? week.end.getDate() : lastDay.getDate();
+      
+      for (let day = weekStartDay; day <= weekEndDay && day <= lastDayToShow.getDate(); day++) {
+        const dailyData = dailyBalance.find(db => db.date.getDate() === day);
+        if (dailyData) {
+          combinedData.push({
+            date: week.date, // Usar o mesmo label da semana para alinhar no eixo X
+            saldoAcumulado: dailyData.saldoAcumulado,
+            receita: null,
+            despesa: null,
+            saldo: null,
+            isWeek: false,
+            dayNumber: day, // Para ordenação
+          });
+        }
+      }
+    });
+    
+    return { weeksData, combinedData, dailyBalance, totalSaldoMes, totalReceitaMes, totalDespesaMes };
+  };
+
+  const balanceEvolutionData = getBalanceEvolution();
+  const balanceEvolution = balanceEvolutionData.weeksData;
+  const combinedChartData = balanceEvolutionData.combinedData;
 
   // Dados para gráfico de evolução anual (receitas e gastos por mês)
   const getAnnualEvolution = () => {
@@ -205,61 +348,75 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
 
   useEffect(() => {
     const fetchAdvice = async () => {
+      // Só busca os insights se o usuário tem direito a vê-los
+      if (!shouldShowInsights) {
+        setLoadingAdvice(false);
+        return;
+      }
+      
+      // Filtrar apenas transações do mês corrente
+      const currentMonthTransactions = getCurrentMonthTransactions();
+      
       setLoadingAdvice(true);
-      const result = await getFinancialAdvice(transactions, goals);
+      const result = await getFinancialAdvice(currentMonthTransactions, goals);
       setAdvice(result);
       setLoadingAdvice(false);
     };
     fetchAdvice();
-  }, [transactions, goals]);
+  }, [transactions, goals, shouldShowInsights]);
 
   return (
     <div className="space-y-6">
-      {/* Support Banner - Mobile Only */}
-      {showSupportBanner && (
-        <div className="md:hidden bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-4 md:p-6 lg:p-8 text-white relative overflow-hidden shadow-xl">
+      {/* AI Suggestion Box - Apenas para quem contribuiu - Mobile primeiro */}
+      {shouldShowInsights && (
+        <div className="md:hidden bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl text-white relative overflow-hidden shadow-xl">
           <button
-            onClick={() => setShowSupportBanner(false)}
-            className="absolute top-3 right-3 text-white/80 hover:text-white transition-colors z-10"
-            title="Fechar"
+            onClick={() => setIsInsightsExpanded(!isInsightsExpanded)}
+            className="w-full p-4 md:p-6 lg:p-8 relative z-10 flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6 hover:opacity-90 transition-opacity"
           >
-            <X size={18} />
+            <div className="p-3 md:p-4 bg-white/20 backdrop-blur-md rounded-2xl border border-white/30 flex-shrink-0">
+              <BrainCircuit size={32} className="md:w-10 md:h-10 text-white" />
+            </div>
+            <div className="flex-1 min-w-0 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Sparkles
+                  size={16}
+                  className="md:w-[18px] md:h-[18px] text-indigo-200 flex-shrink-0"
+                />
+                <h4 className="text-lg md:text-xl font-bold truncate">
+                  Insights do Kako Fin
+                </h4>
+              </div>
+              {isInsightsExpanded ? (
+                <ChevronUp size={20} className="text-indigo-200 flex-shrink-0" />
+              ) : (
+                <ChevronDown size={20} className="text-indigo-200 flex-shrink-0" />
+              )}
+            </div>
           </button>
-          <div className="relative z-10 flex flex-col gap-3">
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-white/20 backdrop-blur-md rounded-xl border border-white/30">
-                <Heart size={20} className="text-pink-300" />
-              </div>
-              <h4 className="text-lg font-bold">Apoie o Kako Fin</h4>
+          
+          {isInsightsExpanded && (
+            <div className="px-4 md:px-6 lg:px-8 pb-4 md:pb-6 lg:pb-8 relative z-10">
+              {loadingAdvice ? (
+                <div className="flex items-center gap-2 text-indigo-100 italic text-sm md:text-base">
+                  <Loader2 size={14} className="md:w-4 md:h-4 animate-spin" />
+                  Analisando suas finanças...
+                </div>
+              ) : (
+                <div className="prose prose-invert max-w-none text-indigo-50 text-sm md:text-base">
+                  {advice.split("\n").map((line, i) => (
+                    <p key={i} className="mb-1 break-words">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              )}
             </div>
-            <div className="text-sm text-indigo-50 space-y-2">
-              <p>
-                Sua contribuição é de{" "}
-                <span className="font-bold">suma importância</span> para a
-                manutenção do app e para continuarmos oferecendo este serviço
-                gratuitamente.
-              </p>
-              <div className="flex items-center gap-2 bg-white/20 backdrop-blur-md rounded-xl p-3 border border-white/30">
-                <span className="font-semibold">PIX:</span>
-                <code className="flex-1 bg-white/30 px-3 py-1.5 rounded-lg font-mono font-bold text-base">
-                  78b60641-9574-42f8-bad4-d9709b49dc61
-                </code>
-                <button
-                  onClick={handleCopyPix}
-                  className="p-2 bg-white/20 hover:bg-white/30 rounded-lg transition-all"
-                  title="Copiar PIX"
-                >
-                  <Copy size={16} />
-                </button>
-              </div>
-              <p className="text-xs opacity-90 italic">
-                Não é obrigatório, mas sua ajuda faz toda a diferença! ❤️
-              </p>
-            </div>
-          </div>
+          )}
+          
           {/* Decorative elements */}
-          <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full blur-2xl"></div>
-          <div className="absolute -bottom-8 -left-8 w-32 h-32 bg-indigo-400/20 rounded-full blur-2xl"></div>
+          <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
         </div>
       )}
 
@@ -318,52 +475,68 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
         </div>
       </div>
 
-      {/* AI Suggestion Box */}
-      <div className="bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl p-4 md:p-6 lg:p-8 text-white relative overflow-hidden shadow-xl">
-        <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6">
-          <div className="p-3 md:p-4 bg-white/20 backdrop-blur-md rounded-2xl border border-white/30 flex-shrink-0">
-            <BrainCircuit size={32} className="md:w-10 md:h-10 text-white" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <Sparkles
-                size={16}
-                className="md:w-[18px] md:h-[18px] text-indigo-200 flex-shrink-0"
-              />
-              <h4 className="text-lg md:text-xl font-bold truncate">
-                Insights do Kako Fin
-              </h4>
+      {/* AI Suggestion Box - Apenas para quem contribuiu - Desktop */}
+      {shouldShowInsights && (
+        <div className="hidden md:block bg-gradient-to-br from-indigo-600 to-violet-700 rounded-3xl text-white relative overflow-hidden shadow-xl">
+          <button
+            onClick={() => setIsInsightsExpanded(!isInsightsExpanded)}
+            className="w-full p-4 md:p-6 lg:p-8 relative z-10 flex flex-col md:flex-row items-start md:items-center gap-4 md:gap-6 hover:opacity-90 transition-opacity"
+          >
+            <div className="p-3 md:p-4 bg-white/20 backdrop-blur-md rounded-2xl border border-white/30 flex-shrink-0">
+              <BrainCircuit size={32} className="md:w-10 md:h-10 text-white" />
             </div>
-            {loadingAdvice ? (
-              <div className="flex items-center gap-2 text-indigo-100 italic text-sm md:text-base">
-                <Loader2 size={14} className="md:w-4 md:h-4 animate-spin" />
-                Analisando suas finanças...
+            <div className="flex-1 min-w-0 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Sparkles
+                  size={16}
+                  className="md:w-[18px] md:h-[18px] text-indigo-200 flex-shrink-0"
+                />
+                <h4 className="text-lg md:text-xl font-bold truncate">
+                  Insights do Kako Fin
+                </h4>
               </div>
-            ) : (
-              <div className="prose prose-invert max-w-none text-indigo-50 text-sm md:text-base">
-                {advice.split("\n").map((line, i) => (
-                  <p key={i} className="mb-1 break-words">
-                    {line}
-                  </p>
-                ))}
-              </div>
-            )}
-          </div>
+              {isInsightsExpanded ? (
+                <ChevronUp size={20} className="text-indigo-200 flex-shrink-0" />
+              ) : (
+                <ChevronDown size={20} className="text-indigo-200 flex-shrink-0" />
+              )}
+            </div>
+          </button>
+          
+          {isInsightsExpanded && (
+            <div className="px-4 md:px-6 lg:px-8 pb-4 md:pb-6 lg:pb-8 relative z-10">
+              {loadingAdvice ? (
+                <div className="flex items-center gap-2 text-indigo-100 italic text-sm md:text-base">
+                  <Loader2 size={14} className="md:w-4 md:h-4 animate-spin" />
+                  Analisando suas finanças...
+                </div>
+              ) : (
+                <div className="prose prose-invert max-w-none text-indigo-50 text-sm md:text-base">
+                  {advice.split("\n").map((line, i) => (
+                    <p key={i} className="mb-1 break-words">
+                      {line}
+                    </p>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          
+          {/* Decorative elements */}
+          <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
+          <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
         </div>
-        {/* Decorative elements */}
-        <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
-      </div>
+      )}
 
-      {/* Weekly Evolution Chart */}
+      {/* Monthly Evolution Chart */}
       <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
         <h4 className="font-bold text-slate-800 mb-4 text-sm md:text-base flex items-center gap-2">
           <TrendingUp className="text-indigo-600" size={18} />
-          Evolução Semanal (Últimos 7 dias)
+          Evolução Mensal (Semanas do Mês Corrente)
         </h4>
         <div className="h-64 md:h-80">
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={weeklyEvolution}>
+            <LineChart data={monthlyEvolution}>
               <CartesianGrid
                 strokeDasharray="3 3"
                 vertical={false}
@@ -373,15 +546,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
                 dataKey="date"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tick={{ fontSize: 10, fill: "#94a3b8" }}
+                angle={-45}
+                textAnchor="end"
+                height={60}
               />
               <YAxis
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
               />
               <Tooltip
-                formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+                formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                 contentStyle={{
                   borderRadius: "12px",
                   border: "none",
@@ -393,22 +570,136 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
               <Line
                 type="monotone"
                 dataKey="receita"
-                stroke="#22c55e"
-                strokeWidth={3}
-                dot={{ fill: "#22c55e", r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Receitas"
+                stroke="#3b82f6"
+                strokeWidth={4}
+                dot={{ fill: "#3b82f6", r: 5 }}
+                activeDot={{ r: 7 }}
+                name="Entradas"
               />
               <Line
                 type="monotone"
                 dataKey="despesa"
                 stroke="#f43f5e"
-                strokeWidth={3}
-                dot={{ fill: "#f43f5e", r: 4 }}
-                activeDot={{ r: 6 }}
+                strokeWidth={4}
+                dot={{ fill: "#f43f5e", r: 5 }}
+                activeDot={{ r: 7 }}
                 name="Despesas"
               />
             </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* Balance Evolution Chart - Saldo do Mês Corrente */}
+      <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mb-4">
+          <h4 className="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
+            <DollarSign className="text-indigo-600" size={18} />
+            Saldo do Mês Corrente (Entradas, Saídas e Saldo)
+          </h4>
+          {balanceEvolution.length > 0 && (
+            <div className="flex items-center gap-4 text-xs md:text-sm">
+              <div className="flex items-center gap-1">
+                <span className="text-slate-500">Total:</span>
+                <span className={`font-bold ${balanceEvolutionData.totalSaldoMes >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  R$ {balanceEvolutionData.totalSaldoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="h-64 md:h-80">
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={combinedChartData}>
+              <CartesianGrid
+                strokeDasharray="3 3"
+                vertical={false}
+                stroke="#f1f5f9"
+              />
+              <XAxis
+                dataKey="date"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "#94a3b8" }}
+                angle={-45}
+                textAnchor="end"
+                height={60}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+              />
+              <Tooltip
+                formatter={(value: number, name: string) => {
+                  if (value === null || value === undefined) return null;
+                  const formattedValue = `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                  let label = '';
+                  if (name === 'receita') label = 'Entradas';
+                  else if (name === 'despesa') label = 'Despesas';
+                  else if (name === 'saldo') label = 'Saldo Semanal';
+                  else if (name === 'saldoAcumulado') label = 'Saldo Acumulado';
+                  return [formattedValue, label];
+                }}
+                contentStyle={{
+                  borderRadius: "12px",
+                  border: "none",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                  fontSize: "12px",
+                }}
+              />
+              <Legend />
+              <Bar 
+                dataKey="receita" 
+                fill="#3b82f6" 
+                stroke="#2563eb"
+                strokeWidth={3}
+                radius={[4, 4, 0, 0]} 
+                name="Entradas"
+              />
+              <Bar 
+                dataKey="despesa" 
+                fill="#f43f5e" 
+                stroke="#dc2626"
+                strokeWidth={3}
+                radius={[4, 4, 0, 0]} 
+                name="Despesas"
+              />
+              <Bar 
+                dataKey="saldo" 
+                fill="#22c55e"
+                stroke="#16a34a"
+                strokeWidth={3}
+                radius={[4, 4, 0, 0]} 
+                name="Saldo Semanal"
+              >
+                {combinedChartData.map((entry: any, index: number) => {
+                  if (!entry.isWeek || entry.saldo === null || entry.saldo === undefined) return null;
+                  // Verde para saldo positivo, vermelho para negativo
+                  const fillColor = entry.saldo >= 0 ? "#22c55e" : "#ef4444";
+                  const strokeColor = entry.saldo >= 0 ? "#16a34a" : "#dc2626";
+                  return (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={fillColor}
+                      stroke={strokeColor}
+                      strokeWidth={3}
+                    />
+                  );
+                })}
+              </Bar>
+              <Line 
+                type="monotone" 
+                dataKey="saldoAcumulado" 
+                stroke="#6366f1" 
+                strokeWidth={4}
+                dot={{ fill: "#6366f1", r: 5 }}
+                activeDot={{ r: 7 }}
+                name="Saldo Acumulado"
+                strokeDasharray="5 5"
+              />
+            </ComposedChart>
           </ResponsiveContainer>
         </div>
       </div>
@@ -417,7 +708,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
       <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
         <h4 className="font-bold text-slate-800 mb-4 text-sm md:text-base flex items-center gap-2">
           <TrendingUp className="text-indigo-600" size={18} />
-          Evolução Anual ({new Date().getFullYear()}) - Receitas e Gastos por
+          Evolução Anual ({new Date().getFullYear()}) - Entradas e Gastos por
           Mês
         </h4>
         <div className="h-64 md:h-80">
@@ -452,19 +743,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
               <Line
                 type="monotone"
                 dataKey="receita"
-                stroke="#22c55e"
-                strokeWidth={3}
-                dot={{ fill: "#22c55e", r: 4 }}
-                activeDot={{ r: 6 }}
-                name="Receitas"
+                stroke="#3b82f6"
+                strokeWidth={4}
+                dot={{ fill: "#3b82f6", r: 5 }}
+                activeDot={{ r: 7 }}
+                name="Entradas"
               />
               <Line
                 type="monotone"
                 dataKey="despesa"
                 stroke="#f43f5e"
-                strokeWidth={3}
-                dot={{ fill: "#f43f5e", r: 4 }}
-                activeDot={{ r: 6 }}
+                strokeWidth={4}
+                dot={{ fill: "#f43f5e", r: 5 }}
+                activeDot={{ r: 7 }}
                 name="Despesas"
               />
             </LineChart>

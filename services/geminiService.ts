@@ -8,28 +8,49 @@ export const getFinancialAdvice = async (
 ): Promise<string> => {
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
   
-  const recentTransactions = transactions.slice(0, 20);
+  // Ordenar transações por data (mais recentes primeiro) e pegar as últimas 20
+  const sortedTransactions = [...transactions].sort((a, b) => {
+    if (a.date > b.date) return -1;
+    if (a.date < b.date) return 1;
+    return 0;
+  });
+  const recentTransactions = sortedTransactions.slice(0, 20);
+  
   const totalIncome = transactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
   const totalExpense = transactions
     .filter(t => t.type === 'expense')
     .reduce((acc, t) => acc + t.amount, 0);
+  
+  // Calcular gastos por categoria do mês
+  const expensesByCategory = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((acc: { [key: string]: number }, t) => {
+      acc[t.category] = (acc[t.category] || 0) + t.amount;
+      return acc;
+    }, {});
+  
+  const topCategories = Object.entries(expensesByCategory)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, 5)
+    .map(([category, amount]) => ({ category, amount }));
 
   const prompt = `
     Atue como um consultor financeiro sênior. 
-    Resumo Financeiro do Usuário:
-    - Renda Total: R$ ${totalIncome.toFixed(2)}
-    - Despesas Totais: R$ ${totalExpense.toFixed(2)}
-    - Saldo: R$ ${(totalIncome - totalExpense).toFixed(2)}
-    - Transações Recentes: ${JSON.stringify(recentTransactions.map(t => ({ d: t.description, v: t.amount, c: t.category, t: t.type })))}
+    Resumo Financeiro do Mês Corrente:
+    - Entradas do Mês: R$ ${totalIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    - Despesas do Mês: R$ ${totalExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    - Saldo do Mês: R$ ${(totalIncome - totalExpense).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+    - Maiores Gastos por Categoria: ${JSON.stringify(topCategories.map(c => ({ categoria: c.category, valor: c.amount })))}
+    - Transações do Mês: ${JSON.stringify(recentTransactions.map(t => ({ d: t.description, v: t.amount, c: t.category, t: t.type })))}
     - Metas: ${JSON.stringify(goals)}
 
-    Com base nesses dados, forneça 3 sugestões práticas e curtas em português (PT-BR) para:
-    1. Como reduzir os maiores gastos.
-    2. Como atingir as metas mais rapidamente.
-    3. Uma dica geral de investimento ou economia.
-    Seja empático e motivador. Formate em tópicos curtos.
+    Com base NOS DADOS DO MÊS CORRENTE, forneça 3 sugestões práticas e curtas em português (PT-BR) para:
+    1. Como reduzir os maiores gastos deste mês.
+    2. Como melhorar o saldo do mês atual.
+    3. Uma dica específica baseada no desempenho financeiro deste mês.
+    Seja empático e motivador. Formate em tópicos curtos. Foque nas ações para o mês atual.
   `;
 
   try {

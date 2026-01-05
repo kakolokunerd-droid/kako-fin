@@ -44,16 +44,17 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
     return acc;
   }, []).sort((a, b) => b.value - a.value);
 
-  // 2. Receitas vs Despesas por Mês
+  // 2. Receitas vs Despesas por Mês (6 meses para trás + mês atual + 6 meses para frente)
   const getMonthlyData = () => {
     const monthNames = [
       'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
       'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'
     ];
     
-    const last6Months = Array.from({ length: 6 }).map((_, i) => {
+    // Criar array com 13 meses: 6 passados + atual + 6 futuros
+    const months = Array.from({ length: 13 }).map((_, i) => {
       const d = new Date();
-      d.setMonth(d.getMonth() - (5 - i));
+      d.setMonth(d.getMonth() - 6 + i); // -6 até +6 (total 13 meses)
       const month = d.getMonth() + 1; // 1-12
       const year = d.getFullYear();
       const monthName = monthNames[d.getMonth()];
@@ -65,7 +66,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
       };
     });
 
-    return last6Months.map(({ month, year, label }) => {
+    return months.map(({ month, year, label }) => {
       // Filtrar transações usando extração direta da string para evitar problemas de timezone
       const monthTransactions = transactions.filter(t => {
         const [tYearStr, tMonthStr] = t.date.split('-');
@@ -112,9 +113,18 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
 
   const balanceEvolution = getBalanceEvolution();
 
-  // 4. Top 5 Maiores Gastos
+  // 4. Top 5 Maiores Gastos (sem duplicatas por descrição)
+  const seenDescriptions = new Set<string>();
   const topExpenses = [...expenseTransactions]
     .sort((a, b) => b.amount - a.amount)
+    .filter(t => {
+      const key = t.description.toLowerCase().trim();
+      if (seenDescriptions.has(key)) {
+        return false; // Já existe uma transação com essa descrição, pula
+      }
+      seenDescriptions.add(key);
+      return true;
+    })
     .slice(0, 5)
     .map(t => ({
       name: t.description.length > 20 ? t.description.substring(0, 20) + '...' : t.description,
@@ -280,37 +290,48 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
       {activeTab === 'transactions' ? (
         <div className="space-y-6">
           {/* Report 1: Gastos por Categoria */}
-          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-96">
+          <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
             <div className="flex items-center gap-2 mb-6">
               <TrendingDown className="text-indigo-600" size={20} />
               <h4 className="font-bold text-slate-800">1. Gastos por Categoria</h4>
             </div>
-            <ResponsiveContainer width="100%" height="80%">
-              <PieChart>
-                <Pie
-                  data={categoryData}
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {categoryData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+            <div className="flex flex-col lg:flex-row gap-6 items-start lg:items-center">
+              <div className="w-full lg:w-1/2 flex justify-center flex-shrink-0">
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={categoryData}
+                      innerRadius={60}
+                      outerRadius={80}
+                      paddingAngle={5}
+                      dataKey="value"
+                    >
+                      {categoryData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip 
+                      formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                    />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="w-full lg:w-1/2">
+                <div className="grid grid-cols-3 gap-2">
+                  {categoryData.map((item, i) => (
+                    <div key={i} className="flex flex-col items-center justify-center gap-1.5 p-2 rounded-lg hover:bg-slate-50 transition-colors text-center">
+                      <div className="flex items-center justify-center gap-1.5">
+                        <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
+                        <span className="text-xs text-slate-700 font-semibold">{item.name}</span>
+                      </div>
+                      <span className="text-xs text-slate-600 font-bold">
+                        R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
                   ))}
-                </Pie>
-                <Tooltip 
-                  formatter={(value: number) => `R$ ${value.toFixed(2)}`}
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-            <div className="flex flex-wrap justify-center gap-4 mt-2">
-              {categoryData.slice(0, 6).map((item, i) => (
-                <div key={i} className="flex items-center gap-1.5">
-                  <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[i % COLORS.length] }}></div>
-                  <span className="text-[10px] text-slate-500 font-bold uppercase">{item.name}</span>
                 </div>
-              ))}
+              </div>
             </div>
           </div>
 
@@ -318,16 +339,21 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-96">
             <div className="flex items-center gap-2 mb-6">
               <BarChart3 className="text-indigo-600" size={20} />
-              <h4 className="font-bold text-slate-800">2. Receitas vs Despesas (Últimos 6 Meses)</h4>
+              <h4 className="font-bold text-slate-800">2. Receitas vs Despesas (6 Meses Passados e 6 Futuros)</h4>
             </div>
             <ResponsiveContainer width="100%" height="80%">
               <BarChart data={monthlyData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#94a3b8' }}
+                  tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                />
                 <Tooltip 
                   cursor={{ fill: '#f8fafc' }}
-                  formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+                  formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 />
                 <Legend />
@@ -355,9 +381,14 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
                   textAnchor="end"
                   height={60}
                 />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#94a3b8' }}
+                  tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                />
                 <Tooltip 
-                  formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+                  formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 />
                 <Line 
@@ -381,7 +412,13 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
             <ResponsiveContainer width="100%" height="80%">
               <BarChart data={topExpenses} layout="vertical">
                 <CartesianGrid strokeDasharray="3 3" horizontal={true} vertical={false} stroke="#f1f5f9" />
-                <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <XAxis 
+                  type="number" 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#94a3b8' }}
+                  tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                />
                 <YAxis 
                   dataKey="name" 
                   type="category" 
@@ -391,7 +428,7 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
                   width={100}
                 />
                 <Tooltip 
-                  formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+                  formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 />
                 <Bar dataKey="value" fill="#f43f5e" radius={[0, 4, 4, 0]} />
@@ -409,9 +446,14 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
               <LineChart data={trendData}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
                 <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#94a3b8' }}
+                  tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                />
                 <Tooltip 
-                  formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+                  formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 />
                 <Legend />
@@ -505,9 +547,14 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
                   textAnchor="end"
                   height={80}
                 />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#94a3b8' }}
+                  tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                />
                 <Tooltip 
-                  formatter={(value: number) => `R$ ${value.toFixed(2)}/dia`}
+                  formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/dia`}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 />
                 <Legend />
@@ -535,9 +582,14 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
                   textAnchor="end"
                   height={80}
                 />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <YAxis 
+                  axisLine={false} 
+                  tickLine={false} 
+                  tick={{ fontSize: 12, fill: '#94a3b8' }}
+                  tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                />
                 <Tooltip 
-                  formatter={(value: number) => `R$ ${value.toFixed(2)}`}
+                  formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
                 />
                 <Legend />

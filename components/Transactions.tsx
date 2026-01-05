@@ -1,6 +1,6 @@
 
-import React, { useState, useMemo } from 'react';
-import { Plus, Search, Filter, Trash2, Edit2, Calendar } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Plus, Search, Filter, Trash2, Edit2, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { Transaction, TransactionType, Category } from '../types';
 
 interface TransactionsProps {
@@ -20,6 +20,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
   const [transactionToDelete, setTransactionToDelete] = useState<string | null>(null);
   const [transactionsToDelete, setTransactionsToDelete] = useState<Set<string>>(new Set());
   const [deleteSelectionMode, setDeleteSelectionMode] = useState(false);
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set());
   // Função para obter data local no formato YYYY-MM-DD sem problemas de timezone
   const getLocalDateString = (date: Date = new Date()): string => {
     const year = date.getFullYear();
@@ -189,6 +190,24 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
     });
   }, [transactions]);
 
+  // Inicializar todos os meses como expandidos por padrão
+  useEffect(() => {
+    if (transactionsByMonth.length > 0) {
+      const allMonths = new Set(transactionsByMonth.map(([, , monthLabelFull]) => monthLabelFull));
+      setExpandedMonths(prev => {
+        // Só atualiza se houver novos meses que não estão no estado atual
+        const hasNewMonths = Array.from(allMonths).some(month => !prev.has(month));
+        if (hasNewMonths) {
+          // Mantém os meses já expandidos e adiciona os novos
+          const updated = new Set(prev);
+          allMonths.forEach(month => updated.add(month));
+          return updated;
+        }
+        return prev;
+      });
+    }
+  }, [transactionsByMonth]);
+
   // Calcular totais por mês
   const getMonthTotals = (transactions: Transaction[]) => {
     const income = transactions
@@ -282,15 +301,35 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
             // Verificar se é futuro
             const isFutureMonth = transactionYear > nowYear || (transactionYear === nowYear && transactionMonth > nowMonth);
 
+            const isExpanded = expandedMonths.has(monthLabelFull);
+            
             return (
               <div key={monthLabelFull} className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
                 <div className={`p-4 border-b ${isCurrentMonth ? 'bg-indigo-50 border-indigo-200' : isFutureMonth ? 'bg-green-50 border-green-200' : 'bg-slate-50 border-slate-200'}`}>
                   <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                     <div className="flex items-center justify-between md:justify-start gap-3">
-                      <div className="flex items-center gap-3">
+                      <button
+                        onClick={() => {
+                          setExpandedMonths(prev => {
+                            const newSet = new Set(prev);
+                            if (newSet.has(monthLabelFull)) {
+                              newSet.delete(monthLabelFull);
+                            } else {
+                              newSet.add(monthLabelFull);
+                            }
+                            return newSet;
+                          });
+                        }}
+                        className="flex items-center gap-3 hover:opacity-70 transition-opacity flex-1 md:flex-initial"
+                      >
                         <Calendar className={isCurrentMonth ? 'text-indigo-600' : isFutureMonth ? 'text-green-600' : 'text-slate-600'} size={20} />
                         <h4 className="text-lg font-bold text-slate-800">{monthLabel}</h4>
-                      </div>
+                        {isExpanded ? (
+                          <ChevronUp className={isCurrentMonth ? 'text-indigo-600' : isFutureMonth ? 'text-green-600' : 'text-slate-600'} size={20} />
+                        ) : (
+                          <ChevronDown className={isCurrentMonth ? 'text-indigo-600' : isFutureMonth ? 'text-green-600' : 'text-slate-600'} size={20} />
+                        )}
+                      </button>
                       {onDeleteByMonth && (
                         <button
                           onClick={() => {
@@ -327,8 +366,9 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                   </div>
                 </div>
 
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left">
+                {isExpanded && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
                     <thead className="bg-slate-50 text-slate-500 uppercase text-[11px] font-bold tracking-wider">
                       <tr>
                         {deleteSelectionMode && (
@@ -419,7 +459,8 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                       })}
                     </tbody>
                   </table>
-                </div>
+                  </div>
+                )}
               </div>
             );
           })}
