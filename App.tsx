@@ -14,6 +14,7 @@ import { ToastContainer, useToast } from './components/Toast';
 import { db } from './services/db';
 import { generateTemporaryPassword } from './services/passwordService';
 import { sendPasswordRecoveryEmail } from './services/emailService';
+import { startAutoCleanupScheduler } from './services/notificationCleanup';
 import { AuthState, Transaction, Goal, UserProfile, Category, ShoppingItem } from './types';
 import { Wallet, LogIn, UserPlus, Loader2, Eye, EyeOff, Mail, X } from 'lucide-react';
 
@@ -58,6 +59,14 @@ const App: React.FC = () => {
       setShoppingItems([]);
     }
   }, [auth.isAuthenticated]);
+
+  // Iniciar scheduler de limpeza automática de notificações aos domingos
+  useEffect(() => {
+    const stopScheduler = startAutoCleanupScheduler();
+    return () => {
+      stopScheduler();
+    };
+  }, []);
 
   // Loop de verificação de contribuições a cada 2 minutos
   useEffect(() => {

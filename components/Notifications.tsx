@@ -69,6 +69,8 @@ const Notifications: React.FC<NotificationsProps> = ({ userEmail }) => {
             : n
         )
       );
+      // Disparar evento para atualizar contador no Layout
+      window.dispatchEvent(new CustomEvent('notification-updated'));
     } catch (error) {
       console.error('Erro ao marcar notificação como lida:', error);
     }
@@ -83,6 +85,8 @@ const Notifications: React.FC<NotificationsProps> = ({ userEmail }) => {
       setNotifications(prev => 
         prev.map(n => ({ ...n, isRead: true, readAt: new Date().toISOString() }))
       );
+      // Disparar evento para atualizar contador no Layout
+      window.dispatchEvent(new CustomEvent('notification-updated'));
     } catch (error) {
       console.error('Erro ao marcar todas como lidas:', error);
     }
@@ -93,10 +97,14 @@ const Notifications: React.FC<NotificationsProps> = ({ userEmail }) => {
       await db.deleteNotification(userEmail, notificationId);
       // Remover da lista imediatamente para feedback visual
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      // Disparar evento para atualizar contador no Layout
+      window.dispatchEvent(new CustomEvent('notification-updated'));
     } catch (error) {
       console.error('Erro ao excluir notificação:', error);
       // Mesmo com erro, remover da lista localmente
       setNotifications(prev => prev.filter(n => n.id !== notificationId));
+      // Disparar evento mesmo em caso de erro para atualizar contador
+      window.dispatchEvent(new CustomEvent('notification-updated'));
     }
   };
 

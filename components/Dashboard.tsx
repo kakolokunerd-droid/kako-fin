@@ -101,153 +101,186 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
     const now = new Date();
     const currentMonth = now.getMonth() + 1; // 1-12
     const currentYear = now.getFullYear();
-    
+
     // Obter primeiro e último dia do mês atual
     const firstDay = new Date(currentYear, currentMonth - 1, 1);
     const lastDay = new Date(currentYear, currentMonth, 0);
-    
+
     // Dividir o mês em semanas (segunda a domingo)
     const weeks: { start: Date; end: Date; label: string }[] = [];
-    const monthName = firstDay.toLocaleDateString('pt-BR', { month: 'short' });
-    
+    const monthName = firstDay.toLocaleDateString("pt-BR", { month: "short" });
+
     // Encontrar a primeira segunda-feira do mês (ou usar o dia 1 se for segunda)
     let weekStart = new Date(firstDay);
     const firstDayOfWeek = firstDay.getDay(); // 0 = domingo, 1 = segunda, ..., 6 = sábado
-    
+
     // Se o primeiro dia não for segunda, encontrar a segunda-feira anterior
     if (firstDayOfWeek !== 1) {
       const daysToMonday = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
       weekStart = new Date(firstDay);
       weekStart.setDate(firstDay.getDate() - daysToMonday);
     }
-    
+
     // Se a segunda-feira anterior for antes do mês, começar no dia 1
     if (weekStart < firstDay) {
       weekStart = new Date(firstDay);
     }
-    
+
     // Criar semanas até cobrir todo o mês
     while (weekStart <= lastDay) {
       const weekEnd = new Date(weekStart);
       weekEnd.setDate(weekStart.getDate() + 6); // Domingo
-      
+
       // Ajustar se ultrapassar o último dia do mês
       if (weekEnd > lastDay) {
         weekEnd.setTime(lastDay.getTime());
       }
-      
+
       // Ajustar início se for antes do primeiro dia
-      const actualStart = weekStart < firstDay ? new Date(firstDay) : new Date(weekStart);
-      
+      const actualStart =
+        weekStart < firstDay ? new Date(firstDay) : new Date(weekStart);
+
       // Criar label
-      const startDay = String(actualStart.getDate()).padStart(2, '0');
-      const endDay = String(weekEnd.getDate()).padStart(2, '0');
+      const startDay = String(actualStart.getDate()).padStart(2, "0");
+      const endDay = String(weekEnd.getDate()).padStart(2, "0");
       const label = `${startDay}-${endDay} ${monthName}`;
-      
+
       weeks.push({
         start: actualStart,
         end: new Date(weekEnd),
-        label
+        label,
       });
-      
+
       // Próxima semana começa na segunda-feira seguinte
       weekStart.setDate(weekStart.getDate() + 7);
     }
 
     return weeks.map(({ start, end, label }) => {
       // Normalizar datas de início e fim da semana (sem horas)
-      const startDate = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-      const endDate = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-      
+      const startDate = new Date(
+        start.getFullYear(),
+        start.getMonth(),
+        start.getDate()
+      );
+      const endDate = new Date(
+        end.getFullYear(),
+        end.getMonth(),
+        end.getDate()
+      );
+
       // Filtrar transações do mês corrente que estão nesta semana
-      const weekTransactions = transactions.filter(t => {
-        const [tYearStr, tMonthStr, tDayStr] = t.date.split('-');
+      const weekTransactions = transactions.filter((t) => {
+        const [tYearStr, tMonthStr, tDayStr] = t.date.split("-");
         const tYear = parseInt(tYearStr);
         const tMonth = parseInt(tMonthStr); // 1-12
         const tDay = parseInt(tDayStr);
-        
+
         // Verificar se é do mês corrente
         if (tMonth !== currentMonth || tYear !== currentYear) {
           return false;
         }
-        
+
         // Verificar se está dentro da semana (comparar apenas datas, sem horas)
         const tDate = new Date(tYear, tMonth - 1, tDay);
-        const tDateOnly = new Date(tDate.getFullYear(), tDate.getMonth(), tDate.getDate());
-        
+        const tDateOnly = new Date(
+          tDate.getFullYear(),
+          tDate.getMonth(),
+          tDate.getDate()
+        );
+
         return tDateOnly >= startDate && tDateOnly <= endDate;
       });
 
-      const receita = weekTransactions.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
-      const despesa = weekTransactions.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
-      
+      const receita = weekTransactions
+        .filter((t) => t.type === "income")
+        .reduce((a, b) => a + b.amount, 0);
+      const despesa = weekTransactions
+        .filter((t) => t.type === "expense")
+        .reduce((a, b) => a + b.amount, 0);
+
       return {
         date: label,
         receita,
         despesa,
         saldo: receita - despesa,
+        start: startDate, // Preservar start para uso posterior
+        end: endDate, // Preservar end para uso posterior
       };
     });
   };
 
   const monthlyEvolution = getMonthlyEvolution();
-  
+
   // Dados para gráfico de saldo do mês corrente (com saldo positivo/negativo)
   const getBalanceEvolution = () => {
     const now = new Date();
     const currentMonth = now.getMonth() + 1; // 1-12
     const currentYear = now.getFullYear();
-    
+
     // Obter primeiro e último dia do mês atual
     const firstDay = new Date(currentYear, currentMonth - 1, 1);
     const lastDay = new Date(currentYear, currentMonth, 0);
     const today = new Date();
     const lastDayToShow = today > lastDay ? lastDay : today; // Não mostrar além de hoje
-    
+
     // Calcular saldo acumulado dia a dia
     const dailyBalance: { date: Date; saldoAcumulado: number }[] = [];
     let saldoAcumulado = 0;
-    
+
     // Iterar por cada dia do mês até hoje
     for (let day = 1; day <= lastDayToShow.getDate(); day++) {
       const currentDate = new Date(currentYear, currentMonth - 1, day);
-      
+
       // Filtrar transações até este dia (inclusive)
-      const transactionsUntilDate = transactions.filter(t => {
-        const [tYearStr, tMonthStr, tDayStr] = t.date.split('-');
+      const transactionsUntilDate = transactions.filter((t) => {
+        const [tYearStr, tMonthStr, tDayStr] = t.date.split("-");
         const tYear = parseInt(tYearStr);
         const tMonth = parseInt(tMonthStr);
         const tDay = parseInt(tDayStr);
-        
+
         if (tMonth !== currentMonth || tYear !== currentYear) return false;
         return tDay <= day;
       });
-      
-      const receita = transactionsUntilDate.filter(t => t.type === 'income').reduce((a, b) => a + b.amount, 0);
-      const despesa = transactionsUntilDate.filter(t => t.type === 'expense').reduce((a, b) => a + b.amount, 0);
+
+      const receita = transactionsUntilDate
+        .filter((t) => t.type === "income")
+        .reduce((a, b) => a + b.amount, 0);
+      const despesa = transactionsUntilDate
+        .filter((t) => t.type === "expense")
+        .reduce((a, b) => a + b.amount, 0);
       saldoAcumulado = receita - despesa;
-      
+
       dailyBalance.push({
         date: new Date(currentDate),
-        saldoAcumulado
+        saldoAcumulado,
       });
     }
-    
+
     // Calcular totais do mês para validação
-    const totalReceitaMes = monthlyEvolution.reduce((sum, week) => sum + week.receita, 0);
-    const totalDespesaMes = monthlyEvolution.reduce((sum, week) => sum + week.despesa, 0);
+    const totalReceitaMes = monthlyEvolution.reduce(
+      (sum, week) => sum + week.receita,
+      0
+    );
+    const totalDespesaMes = monthlyEvolution.reduce(
+      (sum, week) => sum + week.despesa,
+      0
+    );
     const totalSaldoMes = totalReceitaMes - totalDespesaMes;
-    
+
     // Mapear semanas com dados diários para o saldo acumulado
     const weeksData = monthlyEvolution.map((week, index) => {
       // Encontrar o último dia da semana
-      const weekEndDate = week.end || new Date();
+      const weekEndDate = (week as any).end || new Date();
       const weekEndDay = weekEndDate.getDate();
-      
+
       // Encontrar o saldo acumulado no último dia da semana
-      const balanceAtWeekEnd = dailyBalance.find(db => db.date.getDate() === weekEndDay);
-      const saldoAcumuladoSemana = balanceAtWeekEnd ? balanceAtWeekEnd.saldoAcumulado : 0;
-      
+      const balanceAtWeekEnd = dailyBalance.find(
+        (db) => db.date.getDate() === weekEndDay
+      );
+      const saldoAcumuladoSemana = balanceAtWeekEnd
+        ? balanceAtWeekEnd.saldoAcumulado
+        : 0;
+
       return {
         ...week,
         saldoAcumulado: saldoAcumuladoSemana,
@@ -258,11 +291,11 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
         totalSaldoMes,
       };
     });
-    
+
     // Criar array combinado: semanas para barras + dias para linha
     // Para cada semana, adicionar também os pontos diários do saldo acumulado
     const combinedData: any[] = [];
-    
+
     monthlyEvolution.forEach((week, weekIndex) => {
       // Adicionar ponto da semana (para as barras)
       combinedData.push({
@@ -270,13 +303,22 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
         saldoAcumulado: null, // Não mostrar na semana, apenas nos dias
         isWeek: true,
       });
-      
+
       // Adicionar pontos diários desta semana (para a linha) - todos os dias
-      const weekStartDay = week.start ? week.start.getDate() : 1;
-      const weekEndDay = week.end ? week.end.getDate() : lastDay.getDate();
-      
-      for (let day = weekStartDay; day <= weekEndDay && day <= lastDayToShow.getDate(); day++) {
-        const dailyData = dailyBalance.find(db => db.date.getDate() === day);
+      const weekWithDates = week as any;
+      const weekStartDay = weekWithDates.start
+        ? weekWithDates.start.getDate()
+        : 1;
+      const weekEndDay = weekWithDates.end
+        ? weekWithDates.end.getDate()
+        : lastDay.getDate();
+
+      for (
+        let day = weekStartDay;
+        day <= weekEndDay && day <= lastDayToShow.getDate();
+        day++
+      ) {
+        const dailyData = dailyBalance.find((db) => db.date.getDate() === day);
         if (dailyData) {
           combinedData.push({
             date: week.date, // Usar o mesmo label da semana para alinhar no eixo X
@@ -290,8 +332,15 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
         }
       }
     });
-    
-    return { weeksData, combinedData, dailyBalance, totalSaldoMes, totalReceitaMes, totalDespesaMes };
+
+    return {
+      weeksData,
+      combinedData,
+      dailyBalance,
+      totalSaldoMes,
+      totalReceitaMes,
+      totalDespesaMes,
+    };
   };
 
   const balanceEvolutionData = getBalanceEvolution();
@@ -353,10 +402,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
         setLoadingAdvice(false);
         return;
       }
-      
+
       // Filtrar apenas transações do mês corrente
       const currentMonthTransactions = getCurrentMonthTransactions();
-      
+
       setLoadingAdvice(true);
       const result = await getFinancialAdvice(currentMonthTransactions, goals);
       setAdvice(result);
@@ -388,13 +437,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
                 </h4>
               </div>
               {isInsightsExpanded ? (
-                <ChevronUp size={20} className="text-indigo-200 flex-shrink-0" />
+                <ChevronUp
+                  size={20}
+                  className="text-indigo-200 flex-shrink-0"
+                />
               ) : (
-                <ChevronDown size={20} className="text-indigo-200 flex-shrink-0" />
+                <ChevronDown
+                  size={20}
+                  className="text-indigo-200 flex-shrink-0"
+                />
               )}
             </div>
           </button>
-          
+
           {isInsightsExpanded && (
             <div className="px-4 md:px-6 lg:px-8 pb-4 md:pb-6 lg:pb-8 relative z-10">
               {loadingAdvice ? (
@@ -413,7 +468,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
               )}
             </div>
           )}
-          
+
           {/* Decorative elements */}
           <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
           <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
@@ -496,13 +551,19 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
                 </h4>
               </div>
               {isInsightsExpanded ? (
-                <ChevronUp size={20} className="text-indigo-200 flex-shrink-0" />
+                <ChevronUp
+                  size={20}
+                  className="text-indigo-200 flex-shrink-0"
+                />
               ) : (
-                <ChevronDown size={20} className="text-indigo-200 flex-shrink-0" />
+                <ChevronDown
+                  size={20}
+                  className="text-indigo-200 flex-shrink-0"
+                />
               )}
             </div>
           </button>
-          
+
           {isInsightsExpanded && (
             <div className="px-4 md:px-6 lg:px-8 pb-4 md:pb-6 lg:pb-8 relative z-10">
               {loadingAdvice ? (
@@ -521,7 +582,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
               )}
             </div>
           )}
-          
+
           {/* Decorative elements */}
           <div className="absolute -top-12 -right-12 w-48 h-48 bg-white/10 rounded-full blur-3xl"></div>
           <div className="absolute -bottom-12 -left-12 w-48 h-48 bg-indigo-400/20 rounded-full blur-3xl"></div>
@@ -555,10 +616,20 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 11, fill: "#94a3b8" }}
-                tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                tickFormatter={(value: number) =>
+                  value.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  })
+                }
               />
               <Tooltip
-                formatter={(value: number) => `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                formatter={(value: number) =>
+                  `R$ ${value.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`
+                }
                 contentStyle={{
                   borderRadius: "12px",
                   border: "none",
@@ -601,8 +672,17 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
             <div className="flex items-center gap-4 text-xs md:text-sm">
               <div className="flex items-center gap-1">
                 <span className="text-slate-500">Total:</span>
-                <span className={`font-bold ${balanceEvolutionData.totalSaldoMes >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  R$ {balanceEvolutionData.totalSaldoMes.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                <span
+                  className={`font-bold ${
+                    balanceEvolutionData.totalSaldoMes >= 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  R${" "}
+                  {balanceEvolutionData.totalSaldoMes.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                  })}
                 </span>
               </div>
             </div>
@@ -629,17 +709,25 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
                 axisLine={false}
                 tickLine={false}
                 tick={{ fontSize: 11, fill: "#94a3b8" }}
-                tickFormatter={(value: number) => value.toLocaleString('pt-BR', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                tickFormatter={(value: number) =>
+                  value.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 0,
+                  })
+                }
               />
               <Tooltip
                 formatter={(value: number, name: string) => {
                   if (value === null || value === undefined) return null;
-                  const formattedValue = `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-                  let label = '';
-                  if (name === 'receita') label = 'Entradas';
-                  else if (name === 'despesa') label = 'Despesas';
-                  else if (name === 'saldo') label = 'Saldo Semanal';
-                  else if (name === 'saldoAcumulado') label = 'Saldo Acumulado';
+                  const formattedValue = `R$ ${value.toLocaleString("pt-BR", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2,
+                  })}`;
+                  let label = "";
+                  if (name === "receita") label = "Entradas";
+                  else if (name === "despesa") label = "Despesas";
+                  else if (name === "saldo") label = "Saldo Semanal";
+                  else if (name === "saldoAcumulado") label = "Saldo Acumulado";
                   return [formattedValue, label];
                 }}
                 contentStyle={{
@@ -650,38 +738,43 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
                 }}
               />
               <Legend />
-              <Bar 
-                dataKey="receita" 
-                fill="#3b82f6" 
+              <Bar
+                dataKey="receita"
+                fill="#3b82f6"
                 stroke="#2563eb"
                 strokeWidth={3}
-                radius={[4, 4, 0, 0]} 
+                radius={[4, 4, 0, 0]}
                 name="Entradas"
               />
-              <Bar 
-                dataKey="despesa" 
-                fill="#f43f5e" 
+              <Bar
+                dataKey="despesa"
+                fill="#f43f5e"
                 stroke="#dc2626"
                 strokeWidth={3}
-                radius={[4, 4, 0, 0]} 
+                radius={[4, 4, 0, 0]}
                 name="Despesas"
               />
-              <Bar 
-                dataKey="saldo" 
+              <Bar
+                dataKey="saldo"
                 fill="#22c55e"
                 stroke="#16a34a"
                 strokeWidth={3}
-                radius={[4, 4, 0, 0]} 
+                radius={[4, 4, 0, 0]}
                 name="Saldo Semanal"
               >
                 {combinedChartData.map((entry: any, index: number) => {
-                  if (!entry.isWeek || entry.saldo === null || entry.saldo === undefined) return null;
+                  if (
+                    !entry.isWeek ||
+                    entry.saldo === null ||
+                    entry.saldo === undefined
+                  )
+                    return null;
                   // Verde para saldo positivo, vermelho para negativo
                   const fillColor = entry.saldo >= 0 ? "#22c55e" : "#ef4444";
                   const strokeColor = entry.saldo >= 0 ? "#16a34a" : "#dc2626";
                   return (
-                    <Cell 
-                      key={`cell-${index}`} 
+                    <Cell
+                      key={`cell-${index}`}
                       fill={fillColor}
                       stroke={strokeColor}
                       strokeWidth={3}
@@ -689,10 +782,10 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
                   );
                 })}
               </Bar>
-              <Line 
-                type="monotone" 
-                dataKey="saldoAcumulado" 
-                stroke="#6366f1" 
+              <Line
+                type="monotone"
+                dataKey="saldoAcumulado"
+                stroke="#6366f1"
                 strokeWidth={4}
                 dot={{ fill: "#6366f1", r: 5 }}
                 activeDot={{ r: 7 }}

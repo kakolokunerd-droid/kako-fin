@@ -43,34 +43,40 @@ const Layout: React.FC<LayoutProps> = ({
   const isAdmin = user?.role === "admin";
 
   // Carregar contagem de notificações não lidas
-  const loadUnreadCount = useCallback(async () => {
-    if (!user?.email) return;
+  const loadUnreadCount = useCallback(
+    async (forceUpdate: boolean = false) => {
+      if (!user?.email) return;
 
-    // Evitar chamadas simultâneas
-    if (isLoadingRef.current) {
-      return;
-    }
+      // Evitar chamadas simultâneas
+      if (isLoadingRef.current) {
+        return;
+      }
 
-    // Evitar chamadas muito frequentes (mínimo 5 minutos entre chamadas automáticas)
-    const now = Date.now();
-    const timeSinceLastLoad = now - lastLoadTimeRef.current;
-    if (timeSinceLastLoad > 0 && timeSinceLastLoad < 300000) {
-      return;
-    }
+      // Evitar chamadas muito frequentes (mínimo 5 minutos entre chamadas automáticas)
+      // Mas permitir atualização forçada (quando notificações são marcadas como lidas)
+      if (!forceUpdate) {
+        const now = Date.now();
+        const timeSinceLastLoad = now - lastLoadTimeRef.current;
+        if (timeSinceLastLoad > 0 && timeSinceLastLoad < 300000) {
+          return;
+        }
+        lastLoadTimeRef.current = now;
+      }
 
-    isLoadingRef.current = true;
-    lastLoadTimeRef.current = now;
+      isLoadingRef.current = true;
 
-    try {
-      const notifications = await db.getNotifications(user.email);
-      const unread = notifications.filter((n) => !n.isRead).length;
-      setUnreadNotifications(unread);
-    } catch (error) {
-      console.error("Erro ao carregar notificações:", error);
-    } finally {
-      isLoadingRef.current = false;
-    }
-  }, [user?.email]);
+      try {
+        const notifications = await db.getNotifications(user.email);
+        const unread = notifications.filter((n) => !n.isRead).length;
+        setUnreadNotifications(unread);
+      } catch (error) {
+        console.error("Erro ao carregar notificações:", error);
+      } finally {
+        isLoadingRef.current = false;
+      }
+    },
+    [user?.email]
+  );
 
   useEffect(() => {
     if (user?.email) {
@@ -81,6 +87,35 @@ const Layout: React.FC<LayoutProps> = ({
       const interval = setInterval(loadUnreadCount, 3600000);
       return () => clearInterval(interval);
     }
+  }, [loadUnreadCount]);
+
+  // Atualizar contador quando a aba de notificações é selecionada
+  useEffect(() => {
+    if (activeTab === "notifications" && user?.email) {
+      // Forçar atualização imediata ao entrar na aba de notificações
+      loadUnreadCount(true);
+    }
+  }, [activeTab, user?.email, loadUnreadCount]);
+
+  // Listener para eventos de atualização de notificações
+  useEffect(() => {
+    const handleNotificationUpdate = () => {
+      // Atualizar contador quando notificações são marcadas como lidas
+      // Pequeno delay para garantir que o banco foi atualizado
+      setTimeout(() => {
+        loadUnreadCount(true);
+      }, 300);
+    };
+
+    // Escutar eventos customizados de atualização de notificações
+    window.addEventListener("notification-updated", handleNotificationUpdate);
+
+    return () => {
+      window.removeEventListener(
+        "notification-updated",
+        handleNotificationUpdate
+      );
+    };
   }, [loadUnreadCount]);
 
   const menuItems = [

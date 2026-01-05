@@ -907,47 +907,48 @@ class CloudDatabase {
   }
 
   async deleteNotification(userId: string, notificationId: string): Promise<void> {
-    if (!this.isSupabaseConfigured()) {
-      const notifications = await this.getDataLocalStorage<Notification>("notifications", userId);
-      const globalNotifications = await this.getDataLocalStorage<Notification>("notifications", "global");
-      
-      const userNotifs = Array.isArray(notifications) ? notifications : [];
-      const globalNotifs = Array.isArray(globalNotifications) ? globalNotifications : [];
-      
-      // Remover das notificações do usuário
-      const filteredUser = userNotifs.filter(n => n.id !== notificationId);
-      await this.saveDataLocalStorage("notifications", userId, filteredUser);
-      
-      // Remover das notificações globais também
-      const filteredGlobal = globalNotifs.filter(n => n.id !== notificationId);
-      await this.saveDataLocalStorage("notifications", "global", filteredGlobal);
-      return;
-    }
+    // Sempre remover do localStorage primeiro (para garantir exclusão mesmo sem Supabase)
+    const notifications = await this.getDataLocalStorage<Notification>("notifications", userId);
+    const globalNotifications = await this.getDataLocalStorage<Notification>("notifications", "global");
+    
+    const userNotifs = Array.isArray(notifications) ? notifications : [];
+    const globalNotifs = Array.isArray(globalNotifications) ? globalNotifications : [];
+    
+    // Remover das notificações do usuário
+    const filteredUser = userNotifs.filter(n => n.id !== notificationId);
+    await this.saveDataLocalStorage("notifications", userId, filteredUser);
+    
+    // Remover das notificações globais também
+    const filteredGlobal = globalNotifs.filter(n => n.id !== notificationId);
+    await this.saveDataLocalStorage("notifications", "global", filteredGlobal);
 
-    try {
-      // No Supabase, marcar como deletada para o usuário específico na tabela notification_reads
-      const { error } = await supabase
-        .from("notification_reads")
-        .upsert({
-          notification_id: notificationId,
-          user_id: userId,
-          deleted_at: new Date().toISOString(),
-        }, {
-          onConflict: 'notification_id,user_id'
-        });
+    // Se Supabase estiver configurado, também marcar como deletada lá
+    if (this.isSupabaseConfigured()) {
+      try {
+        // No Supabase, marcar como deletada para o usuário específico na tabela notification_reads
+        const { error } = await supabase
+          .from("notification_reads")
+          .upsert({
+            notification_id: notificationId,
+            user_id: userId,
+            deleted_at: new Date().toISOString(),
+          }, {
+            onConflict: 'notification_id,user_id'
+          });
 
-      if (error) {
-        console.warn("⚠️ Erro ao excluir notificação no Supabase (tabela pode não existir):", error);
+        if (error) {
+          console.warn("⚠️ Erro ao excluir notificação no Supabase (tabela pode não existir):", error);
+          console.log("💾 Notificação excluída do localStorage");
+          // Não lançar erro, já salvamos no localStorage
+          return;
+        }
+
+        console.log("✅ Notificação excluída no Supabase");
+      } catch (error) {
+        console.warn("⚠️ Erro ao excluir notificação no Supabase:", error);
         console.log("💾 Notificação excluída do localStorage");
         // Não lançar erro, já salvamos no localStorage
-        return;
       }
-
-      console.log("✅ Notificação excluída no Supabase");
-    } catch (error) {
-      console.warn("⚠️ Erro ao excluir notificação:", error);
-      console.log("💾 Notificação excluída do localStorage");
-      // Não lançar erro, já salvamos no localStorage
     }
   }
 
