@@ -45,7 +45,16 @@ git push -u origin main
 GEMINI_API_KEY=sua_chave_gemini_aqui
 VITE_SUPABASE_URL=https://seu-projeto.supabase.co
 VITE_SUPABASE_ANON_KEY=sua_chave_anon_aqui
+VITE_EMAILJS_SERVICE_ID=seu_service_id (opcional)
+VITE_EMAILJS_TEMPLATE_ID=seu_template_id (opcional)
+VITE_EMAILJS_PUBLIC_KEY=sua_public_key (opcional)
 ```
+
+**⚠️ IMPORTANTE sobre GEMINI_API_KEY:**
+- Esta variável é necessária para os **Insights com IA** funcionarem
+- Sem ela, os Insights não carregarão (mas o resto do app funciona)
+- Obtenha a chave em: https://aistudio.google.com/app/apikey
+- **NÃO** use `VITE_GEMINI_API_KEY` - use apenas `GEMINI_API_KEY`
 
 3. Para cada variável:
    - Cole o valor (sem espaços extras)
