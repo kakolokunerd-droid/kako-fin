@@ -278,7 +278,12 @@ class CloudDatabase {
         return {
           ...parsed,
           lastContributionDate: parsed.lastContributionDate || undefined,
-          role: parsed.role || 'user'
+          role: parsed.role || 'user',
+          // Campos de assinatura (com fallback)
+          subscriptionPlan: parsed.subscriptionPlan || 'trial',
+          subscriptionStartedAt: parsed.subscriptionStartedAt || undefined,
+          subscriptionExpiresAt: parsed.subscriptionExpiresAt || null,
+          isTrialActive: parsed.isTrialActive ?? true,
         };
       }
       return null;
@@ -317,6 +322,11 @@ class CloudDatabase {
         currency: data.currency || "BRL",
         lastContributionDate: data.last_contribution_date || undefined,
         role: (data.role as 'admin' | 'user') || 'user',
+        // Campos de assinatura
+        subscriptionPlan: data.subscription_plan || 'trial',
+        subscriptionStartedAt: data.subscription_started_at || undefined,
+        subscriptionExpiresAt: data.subscription_expires_at || null,
+        isTrialActive: data.is_trial_active ?? true,
       };
       } catch (error) {
         console.error("Erro ao buscar perfil do Supabase:", error);
@@ -325,7 +335,12 @@ class CloudDatabase {
           const parsed = JSON.parse(profile);
           return {
             ...parsed,
-            role: parsed.role || 'user'
+            role: parsed.role || 'user',
+            // Campos de assinatura (com fallback)
+            subscriptionPlan: parsed.subscriptionPlan || 'trial',
+            subscriptionStartedAt: parsed.subscriptionStartedAt || undefined,
+            subscriptionExpiresAt: parsed.subscriptionExpiresAt || null,
+            isTrialActive: parsed.isTrialActive ?? true,
           };
         }
         return null;
@@ -352,6 +367,11 @@ class CloudDatabase {
           currency: profile.currency || "BRL",
           last_contribution_date: profile.lastContributionDate || null,
           role: profile.role || 'user',
+          // Campos de assinatura
+          subscription_plan: profile.subscriptionPlan || 'trial',
+          subscription_started_at: profile.subscriptionStartedAt || new Date().toISOString(),
+          subscription_expires_at: profile.subscriptionExpiresAt || null,
+          is_trial_active: profile.isTrialActive ?? true,
           updated_at: new Date().toISOString(),
         },
         {

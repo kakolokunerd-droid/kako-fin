@@ -10,6 +10,8 @@ import Admin from './components/Admin';
 import Shopping from './components/Shopping';
 import Notifications from './components/Notifications';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
+import Pricing from './components/Pricing';
+import SubscriptionBlock from './components/SubscriptionBlock';
 import { ToastContainer, useToast } from './components/Toast';
 import { db } from './services/db';
 import { generateTemporaryPassword } from './services/passwordService';
@@ -37,6 +39,8 @@ const App: React.FC = () => {
   const [recoveryEmail, setRecoveryEmail] = useState('');
   const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [recoveryMessage, setRecoveryMessage] = useState('');
+  const [selectedPlan, setSelectedPlan] = useState<'trial' | 'basic' | 'premium' | 'premium_plus' | null>(null);
+  const [showPricingBeforeAuth, setShowPricingBeforeAuth] = useState(false);
   
   // App Data
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -46,6 +50,29 @@ const App: React.FC = () => {
   // Flag para evitar salvamento durante carregamento inicial
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [hasLoadedData, setHasLoadedData] = useState(false);
+
+  // Verificar parâmetro de plano na URL ao montar
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const planParam = urlParams.get('plan');
+    if (planParam && ['trial', 'basic', 'premium', 'premium_plus'].includes(planParam)) {
+      setSelectedPlan(planParam as 'trial' | 'basic' | 'premium' | 'premium_plus');
+      setIsRegistering(true);
+      // Limpar URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
+
+  // Listener para mudança de tab via evento customizado
+  useEffect(() => {
+    const handleTabChange = (e: CustomEvent) => {
+      setActiveTab(e.detail);
+    };
+    window.addEventListener('change-tab', handleTabChange as EventListener);
+    return () => {
+      window.removeEventListener('change-tab', handleTabChange as EventListener);
+    };
+  }, []);
 
   // Sincronização Inicial com o "Banco de Dados"
   useEffect(() => {
@@ -245,10 +272,24 @@ const App: React.FC = () => {
       return;
     }
     
-    const newUser: UserProfile = { name, email, currency: 'BRL', role: 'user' };
+    // Determinar plano final (padrão é trial)
+    const finalPlan = selectedPlan || 'trial';
+    const now = new Date().toISOString();
+    
+    const newUser: UserProfile = { 
+      name, 
+      email, 
+      currency: 'BRL', 
+      role: 'user',
+      subscriptionPlan: finalPlan,
+      subscriptionStartedAt: now,
+      subscriptionExpiresAt: null, // Trial é permanente (sem vencimento)
+      isTrialActive: finalPlan === 'trial', // Apenas trial é marcado como trial ativo
+    };
     await db.saveProfile(newUser);
     await db.savePassword(email, pass);
     setAuth({ isAuthenticated: true, user: newUser });
+    setSelectedPlan(null); // Resetar plano selecionado
     setIsLoading(false);
   };
 
@@ -259,18 +300,22 @@ const App: React.FC = () => {
   };
 
   // CRUD Handlers
-  const addTransaction = (t: Omit<Transaction, 'id'>) => {
-    // Verificar se já existe uma transação idêntica (mesma descrição, data, valor e tipo)
-    const isDuplicate = transactions.some(existing => 
-      existing.description === t.description &&
-      existing.date === t.date &&
-      existing.amount === t.amount &&
-      existing.type === t.type
-    );
+  const addTransaction = (t: Omit<Transaction, 'id'>, options?: { allowDuplicate?: boolean }) => {
+    const allowDuplicate = options?.allowDuplicate ?? false;
     
-    if (isDuplicate) {
-      console.warn('⚠️ Tentativa de adicionar transação duplicada ignorada:', t.description, t.date);
-      return;
+    if (!allowDuplicate) {
+      // Verificar se já existe uma transação idêntica (mesma descrição, data, valor e tipo)
+      const isDuplicate = transactions.some(existing => 
+        existing.description === t.description &&
+        existing.date === t.date &&
+        existing.amount === t.amount &&
+        existing.type === t.type
+      );
+      
+      if (isDuplicate) {
+        console.warn('⚠️ Tentativa de adicionar transação duplicada ignorada:', t.description, t.date);
+        return;
+      }
     }
     
     // Gerar ID único
@@ -281,7 +326,9 @@ const App: React.FC = () => {
     } while (existingIds.has(newId));
     
     const newT = { ...t, id: newId };
-    setTransactions([newT, ...transactions]);
+    // Usar atualização funcional para garantir que múltiplas inserções
+    // no mesmo ciclo (como na cópia em lote) acumulem todas as transações
+    setTransactions(prev => [newT, ...prev]);
   };
 
   const updateTransaction = (id: string, updated: Omit<Transaction, 'id'>) => {
@@ -538,6 +585,31 @@ const App: React.FC = () => {
     setIsLoading(false);
   };
 
+  const updateUserSubscription = async (newPlan: 'trial' | 'basic' | 'premium' | 'premium_plus') => {
+    if (!auth.user) return;
+    
+    setIsLoading(true);
+    try {
+      const updatedUser: UserProfile = {
+        ...auth.user,
+        subscriptionPlan: newPlan,
+        subscriptionStartedAt: new Date().toISOString(),
+        subscriptionExpiresAt: null, // Pode ser atualizado depois com data de expiração
+        isTrialActive: newPlan === 'trial' ? true : false,
+      };
+      
+      await db.saveProfile(updatedUser);
+      setAuth(prev => ({ ...prev, user: updatedUser }));
+      showToast('Plano atualizado com sucesso!', 'success');
+      setActiveTab('dashboard');
+    } catch (error) {
+      console.error('Erro ao atualizar plano:', error);
+      showToast('Erro ao atualizar plano. Tente novamente.', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
 
   const changePassword = async (oldP: string, newP: string): Promise<boolean> => {
     if (!auth.user) return false;
@@ -597,6 +669,21 @@ const App: React.FC = () => {
   };
 
   if (!auth.isAuthenticated) {
+    // Mostrar pricing antes do cadastro se solicitado
+    if (showPricingBeforeAuth) {
+      return (
+        <Pricing 
+          onBack={() => setShowPricingBeforeAuth(false)} 
+          onSelectPlan={(plan) => {
+            setSelectedPlan(plan);
+            setShowPricingBeforeAuth(false);
+            setIsRegistering(true);
+          }}
+          mode="signup"
+        />
+      );
+    }
+
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
         <div className="max-w-md w-full bg-white rounded-3xl shadow-xl p-8 border border-slate-100">
@@ -610,10 +697,21 @@ const App: React.FC = () => {
 
           <form onSubmit={isRegistering ? handleRegister : handleLogin} className="space-y-4">
             {isRegistering && (
-              <div>
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome</label>
-                <input name="name" type="text" required className="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
-              </div>
+              <>
+                {selectedPlan && (
+                  <div className="mb-4 p-3 bg-teal-50 border border-teal-200 rounded-xl">
+                    <p className="text-sm text-teal-800 font-semibold">
+                      {selectedPlan === 'trial' 
+                        ? '✨ 30 dias grátis selecionado' 
+                        : `Plano ${selectedPlan.charAt(0).toUpperCase() + selectedPlan.slice(1)} selecionado`}
+                    </p>
+                  </div>
+                )}
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Nome</label>
+                  <input name="name" type="text" required className="w-full px-4 py-3 bg-slate-50 border rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" />
+                </div>
+              </>
             )}
             <div>
               <label className="block text-xs font-bold text-slate-500 uppercase mb-1">E-mail</label>
@@ -652,9 +750,20 @@ const App: React.FC = () => {
             </button>
           )}
 
-          <button onClick={() => setIsRegistering(!isRegistering)} className="w-full mt-4 text-sm font-semibold text-indigo-600 text-center">
-            {isRegistering ? 'Já tem conta? Login' : 'Novo por aqui? Criar conta'}
-          </button>
+          <div className="space-y-3 mt-4">
+            <button onClick={() => setIsRegistering(!isRegistering)} className="w-full text-sm font-semibold text-indigo-600 text-center">
+              {isRegistering ? 'Já tem conta? Login' : 'Novo por aqui? Criar conta'}
+            </button>
+            {isRegistering && (
+              <button 
+                type="button"
+                onClick={() => setShowPricingBeforeAuth(true)}
+                className="w-full text-sm font-semibold text-teal-600 hover:text-teal-700 text-center border border-teal-200 rounded-xl py-2 px-4 hover:bg-teal-50 transition-colors"
+              >
+                📋 Ver Planos Disponíveis
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Modal de Recuperação de Senha */}
@@ -755,14 +864,38 @@ const App: React.FC = () => {
             Sincronizando com a nuvem...
           </div>
         )}
-        {activeTab === 'dashboard' && <Dashboard transactions={transactions} goals={goals} user={auth.user} />}
-        {activeTab === 'transactions' && <Transactions transactions={transactions} onAdd={addTransaction} onUpdate={updateTransaction} onDelete={deleteTransaction} onDeleteByMonth={deleteTransactionsByMonth} showToast={showToast} />}
+        {activeTab === 'dashboard' && <Dashboard transactions={transactions} goals={goals} user={auth.user} auth={auth} />}
+        {activeTab === 'transactions' && (
+          <Transactions
+            transactions={transactions}
+            onAdd={addTransaction}
+            onUpdate={updateTransaction}
+            onDelete={deleteTransaction}
+            onDeleteByMonth={deleteTransactionsByMonth}
+            showToast={showToast}
+            userEmail={auth.user?.email}
+          />
+        )}
         {activeTab === 'shopping' && <Shopping shoppingItems={shoppingItems} onAdd={addShoppingItem} onUpdate={updateShoppingItem} onDelete={deleteShoppingItem} onAddToTransactions={addShoppingToTransactions} showToast={showToast} />}
-        {activeTab === 'goals' && <Goals goals={goals} onAdd={addGoal} onUpdate={updateGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />}
-        {activeTab === 'reports' && <Reports transactions={transactions} goals={goals} />}
+        {activeTab === 'goals' && (
+          <SubscriptionBlock feature="goals" auth={auth}>
+            <Goals goals={goals} onAdd={addGoal} onUpdate={updateGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />
+          </SubscriptionBlock>
+        )}
+        {activeTab === 'reports' && <Reports transactions={transactions} goals={goals} auth={auth} />}
         {activeTab === 'notifications' && <Notifications userEmail={auth.user!.email} />}
-        {activeTab === 'profile' && <Profile user={auth.user!} onUpdate={updateUserProfile} onChangePassword={changePassword} onLogout={handleLogout} />}
+        {activeTab === 'profile' && <Profile user={auth.user!} onUpdate={updateUserProfile} onChangePassword={changePassword} onLogout={handleLogout} auth={auth} />}
         {activeTab === 'admin' && auth.user && auth.user.role === 'admin' && <Admin userEmail={auth.user.email} />}
+        {activeTab === 'pricing' && auth.isAuthenticated && (
+          <Pricing 
+            onBack={() => setActiveTab('dashboard')} 
+            onSelectPlan={async (plan) => {
+              await updateUserSubscription(plan);
+            }}
+            mode="change"
+            currentPlan={auth.user?.subscriptionPlan}
+          />
+        )}
         </div>
       </Layout>
     </>

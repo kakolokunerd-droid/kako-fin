@@ -15,17 +15,19 @@ import {
   Line,
   Legend
 } from 'recharts';
-import { Transaction, Goal } from '../types';
+import { Transaction, Goal, AuthState } from '../types';
 import { TrendingUp, TrendingDown, Target, Calendar, Zap, BarChart3 } from 'lucide-react';
+import SubscriptionBlock from './SubscriptionBlock';
 
 interface ReportsProps {
   transactions: Transaction[];
   goals: Goal[];
+  auth: AuthState;
 }
 
 type ReportType = 'transactions' | 'goals';
 
-const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, goals, auth }) => {
   const [activeTab, setActiveTab] = useState<ReportType>('transactions');
 
   const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#06b6d4'];
@@ -260,9 +262,10 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
   const completionProjection = getCompletionProjection();
 
   return (
-    <div className="space-y-6">
-      {/* Tab Selector */}
-      <div className="bg-white p-2 rounded-2xl border border-slate-200 inline-flex gap-2">
+    <SubscriptionBlock feature="reports" auth={auth}>
+      <div className="space-y-6">
+        {/* Tab Selector */}
+        <div className="bg-white p-2 rounded-2xl border border-slate-200 inline-flex gap-2">
         <button
           onClick={() => setActiveTab('transactions')}
           className={`px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 ${
@@ -630,7 +633,8 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals }) => {
           </div>
         </div>
       )}
-    </div>
+      </div>
+    </SubscriptionBlock>
   );
 };
 

@@ -1,16 +1,20 @@
 
 import React, { useState, useRef } from 'react';
-import { User, Mail, Shield, Camera, Save, Lock, Eye, EyeOff, CheckCircle2, LogOut, Share2, Heart, Copy, UserCog } from 'lucide-react';
-import { UserProfile, UserRole } from '../types';
+import { User, Mail, Shield, Camera, Save, Lock, Eye, EyeOff, CheckCircle2, LogOut, Share2, Heart, Copy, UserCog, Crown, Zap, Star, ArrowRight } from 'lucide-react';
+import { UserProfile, UserRole, SubscriptionPlan } from '../types';
+import { useSubscription } from '../hooks/useSubscription';
+import { AuthState } from '../types';
 
 interface ProfileProps {
   user: UserProfile;
   onUpdate: (updated: UserProfile) => void;
   onChangePassword: (oldP: string, newP: string) => Promise<boolean>;
   onLogout?: () => void;
+  auth: AuthState;
 }
 
-const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onLogout }) => {
+const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onLogout, auth }) => {
+  const subscription = useSubscription(auth);
   const [name, setName] = useState(user.name);
   const [email, setEmail] = useState(user.email);
   const [avatar, setAvatar] = useState(user.avatar || '');
@@ -152,7 +156,112 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
         </div>
       </div>
 
-      {/* Contribution Status Section - Primeiro */}
+      {/* Subscription Plan Section */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="font-bold text-slate-800 flex items-center gap-2">
+            <Crown size={20} className="text-teal-500" />
+            Plano de Assinatura
+          </h4>
+        </div>
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-4 bg-gradient-to-r from-teal-50 to-indigo-50 rounded-xl border border-teal-200">
+            <div className="flex items-center gap-3">
+              {subscription.plan === 'trial' && <Zap className="text-yellow-500" size={24} />}
+              {subscription.plan === 'basic' && <Zap className="text-yellow-500" size={24} />}
+              {subscription.plan === 'premium' && <Star className="text-purple-500" size={24} />}
+              {subscription.plan === 'premium_plus' && <Crown className="text-teal-500" size={24} />}
+              <div>
+                <p className="font-bold text-slate-900">
+                  {subscription.plan === 'trial' && 'Trial - Gratuito Permanente'}
+                  {subscription.plan === 'basic' && 'Basic - R$ 4,99/mês'}
+                  {subscription.plan === 'premium' && 'Premium - R$ 9,99/mês'}
+                  {subscription.plan === 'premium_plus' && 'Premium Plus - R$ 19,99/mês'}
+                </p>
+                {subscription.isTrial && (
+                  <p className="text-sm text-slate-600">
+                    Gratuito permanente - Sem vencimento
+                  </p>
+                )}
+                {!subscription.isTrial && (
+                  <p className="text-sm text-slate-600">
+                    Plano ativo
+                  </p>
+                )}
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const event = new CustomEvent('change-tab', { detail: 'pricing' });
+                window.dispatchEvent(event);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-teal-500 text-white rounded-xl font-semibold hover:bg-teal-600 transition-colors"
+            >
+              <ArrowRight size={18} />
+              Trocar Plano
+            </button>
+          </div>
+          <div className="mt-4">
+            <p className="text-sm font-semibold text-slate-700 mb-3">Funcionalidades disponíveis no seu plano:</p>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {/* Dashboard - Todos têm */}
+              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+                <p className="font-semibold text-sm">Dashboard</p>
+                <p className="text-xs mt-1">✓ Disponível</p>
+              </div>
+              {/* Transações - Todos têm */}
+              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+                <p className="font-semibold text-sm">Transações</p>
+                <p className="text-xs mt-1">✓ Disponível</p>
+              </div>
+              {/* Compras - Todos têm */}
+              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+                <p className="font-semibold text-sm">Compras</p>
+                <p className="text-xs mt-1">✓ Disponível</p>
+              </div>
+              {/* Metas - Basic, Premium, Premium Plus */}
+              <div className={`p-3 rounded-lg border ${
+                subscription.canAccessGoals 
+                  ? 'bg-green-50 text-green-700 border-green-200' 
+                  : 'bg-slate-50 text-slate-400 border-slate-200'
+              }`}>
+                <p className="font-semibold text-sm">Metas</p>
+                <p className="text-xs mt-1">{subscription.canAccessGoals ? '✓ Disponível' : '✗ Indisponível'}</p>
+              </div>
+              {/* Insights - Apenas Premium Plus */}
+              <div className={`p-3 rounded-lg border ${
+                subscription.canAccessInsights 
+                  ? 'bg-green-50 text-green-700 border-green-200' 
+                  : 'bg-slate-50 text-slate-400 border-slate-200'
+              }`}>
+                <p className="font-semibold text-sm">Insights IA</p>
+                <p className="text-xs mt-1">{subscription.canAccessInsights ? '✓ Disponível' : '✗ Indisponível'}</p>
+              </div>
+              {/* Relatórios - Apenas Premium Plus */}
+              <div className={`p-3 rounded-lg border ${
+                subscription.canAccessReports 
+                  ? 'bg-green-50 text-green-700 border-green-200' 
+                  : 'bg-slate-50 text-slate-400 border-slate-200'
+              }`}>
+                <p className="font-semibold text-sm">Relatórios</p>
+                <p className="text-xs mt-1">{subscription.canAccessReports ? '✓ Disponível' : '✗ Indisponível'}</p>
+              </div>
+              {/* Notificações - Todos têm */}
+              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+                <p className="font-semibold text-sm">Notificações</p>
+                <p className="text-xs mt-1">✓ Disponível</p>
+              </div>
+              {/* Perfil - Todos têm */}
+              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+                <p className="font-semibold text-sm">Perfil</p>
+                <p className="text-xs mt-1">✓ Disponível</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Contribution Status Section */}
       {user.lastContributionDate && (
         <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between mb-4">

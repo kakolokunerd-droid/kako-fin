@@ -19,6 +19,7 @@ export interface Goal {
 }
 
 export type UserRole = 'admin' | 'user';
+export type SubscriptionPlan = 'trial' | 'basic' | 'premium' | 'premium_plus';
 
 export interface UserProfile {
   name: string;
@@ -27,6 +28,11 @@ export interface UserProfile {
   currency: string;
   lastContributionDate?: string;
   role?: UserRole;
+  // Campos de assinatura
+  subscriptionPlan?: SubscriptionPlan;
+  subscriptionStartedAt?: string;
+  subscriptionExpiresAt?: string | null;
+  isTrialActive?: boolean;
 }
 
 export interface AuthState {

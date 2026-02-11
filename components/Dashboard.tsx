@@ -9,8 +9,10 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { Transaction, Goal } from "../types";
+import { Transaction, Goal, AuthState } from "../types";
 import { getFinancialAdvice } from "../services/aiService";
+import { useSubscription } from "../hooks/useSubscription";
+import SubscriptionBlock from "./SubscriptionBlock";
 import {
   LineChart,
   Line,
@@ -30,13 +32,16 @@ interface DashboardProps {
   transactions: Transaction[];
   goals: Goal[];
   user?: { lastContributionDate?: string };
+  auth?: AuthState;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
+const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user, auth }) => {
   const [advice, setAdvice] = useState<string>("");
   const [loadingAdvice, setLoadingAdvice] = useState<boolean>(true);
   const [isInsightsExpanded, setIsInsightsExpanded] = useState<boolean>(false);
   const [shouldShowInsights, setShouldShowInsights] = useState<boolean>(false);
+  
+  const subscription = auth ? useSubscription(auth) : null;
 
   // Função para formatar data para exibição sem problemas de timezone
   const formatDateForDisplay = (dateString: string): string => {
@@ -45,9 +50,16 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
     return `${day}/${month}/${year}`;
   };
 
-  // Verificar se deve mostrar os Insights (apenas para quem contribuiu)
+  // Verificar se deve mostrar os Insights (apenas premium_plus E se contribuiu)
   useEffect(() => {
     const checkInsights = () => {
+      // Verificar primeiro se tem acesso pelo plano
+      if (!subscription?.canAccessInsights) {
+        setShouldShowInsights(false);
+        return;
+      }
+
+      // Depois verificar se contribuiu
       if (!user?.lastContributionDate) {
         setShouldShowInsights(false);
         return;
@@ -59,7 +71,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
         (now.getTime() - lastContribution.getTime()) / (1000 * 60 * 60 * 24)
       );
 
-      // Mostra apenas se contribuiu há menos de 30 dias
+      // Mostra apenas se contribuiu há menos de 30 dias E tem plano premium_plus
       setShouldShowInsights(daysSinceContribution < 30);
     };
 
@@ -68,7 +80,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user }) => {
     const interval = setInterval(checkInsights, 120000); // Verificar a cada 2 minutos
 
     return () => clearInterval(interval);
-  }, [user?.lastContributionDate]);
+  }, [user?.lastContributionDate, subscription?.canAccessInsights]);
 
   // Calcular totais apenas do mês atual
   const getCurrentMonthTransactions = () => {

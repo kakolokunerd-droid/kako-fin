@@ -1,18 +1,19 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, Filter, Trash2, Edit2, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Edit2, Calendar, ChevronDown, ChevronUp, Copy, CheckCircle2 } from 'lucide-react';
 import { Transaction, TransactionType, Category } from '../types';
 
 interface TransactionsProps {
   transactions: Transaction[];
-  onAdd: (transaction: Omit<Transaction, 'id'>) => void;
+  onAdd: (transaction: Omit<Transaction, 'id'>, options?: { allowDuplicate?: boolean }) => void;
   onUpdate: (id: string, transaction: Omit<Transaction, 'id'>) => void;
   onDelete: (id: string) => Promise<void>;
   onDeleteByMonth?: (month: number, year: number) => Promise<void>;
   showToast?: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+  userEmail?: string;
 }
 
-const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpdate, onDelete, onDeleteByMonth, showToast }) => {
+const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpdate, onDelete, onDeleteByMonth, showToast, userEmail }) => {
   const [showDeleteMonthModal, setShowDeleteMonthModal] = useState(false);
   const [monthToDelete, setMonthToDelete] = useState<{ month: number; year: number; label: string } | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -43,6 +44,52 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
   const [date, setDate] = useState(getLocalDateString());
   const [category, setCategory] = useState(Category.FOOD);
   const [type, setType] = useState<TransactionType>('expense');
+
+  // Estado para cópia de transações entre meses
+  const [showCopyModal, setShowCopyModal] = useState(false);
+  const [copySourceMonth, setCopySourceMonth] = useState<{ month: number; year: number; label: string } | null>(null);
+  const [copyTransactions, setCopyTransactions] = useState<Transaction[]>([]);
+  const [copySelectedTransactions, setCopySelectedTransactions] = useState<Set<string>>(new Set());
+  const [copyDate, setCopyDate] = useState(getLocalDateString());
+
+  // Estado de "marcar como paga"
+  const [paidTransactions, setPaidTransactions] = useState<Set<string>>(new Set());
+
+  // Carregar estado de pagos do localStorage (por usuário)
+  useEffect(() => {
+    if (!userEmail) return;
+    try {
+      const stored = localStorage.getItem(`fintrack_${userEmail}_paid_transactions`);
+      if (stored) {
+        const ids: string[] = JSON.parse(stored);
+        setPaidTransactions(new Set(ids));
+      }
+    } catch (error) {
+      console.error('Erro ao carregar transações pagas do localStorage:', error);
+    }
+  }, [userEmail]);
+
+  const persistPaidTransactions = (next: Set<string>) => {
+    if (!userEmail) return;
+    try {
+      localStorage.setItem(`fintrack_${userEmail}_paid_transactions`, JSON.stringify(Array.from(next)));
+    } catch (error) {
+      console.error('Erro ao salvar transações pagas no localStorage:', error);
+    }
+  };
+
+  const togglePaid = (id: string) => {
+    setPaidTransactions(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      persistPaidTransactions(next);
+      return next;
+    });
+  };
 
   const resetForm = () => {
     setDescription('');
@@ -89,6 +136,61 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
     setShowModal(false);
   };
 
+  // Confirma a cópia das transações selecionadas para a data escolhida
+  const handleConfirmCopy = () => {
+    if (!copySourceMonth || !copyDate) {
+      if (showToast && !copyDate) {
+        showToast('Escolha uma data para copiar as transações.', 'warning');
+      }
+      return;
+    }
+
+    const selected = copyTransactions.filter(t => copySelectedTransactions.has(t.id));
+
+    if (selected.length === 0) {
+      if (showToast) {
+        showToast('Selecione ao menos uma transação para copiar.', 'warning');
+      }
+      return;
+    }
+
+    // Extrair ano e mês da data escolhida (mês de destino)
+    const [targetYearStr, targetMonthStr] = copyDate.split('-');
+    const targetYear = parseInt(targetYearStr, 10);
+    const targetMonth = parseInt(targetMonthStr, 10); // 1-12
+
+    selected.forEach(t => {
+      const [, , dayStr] = t.date.split('-');
+      const day = parseInt(dayStr, 10);
+
+      // Garantir que o dia é válido para o mês de destino
+      const lastDayOfTargetMonth = new Date(targetYear, targetMonth, 0).getDate(); // dia 0 do próximo mês = último dia do mês
+      const safeDay = Math.min(day, lastDayOfTargetMonth);
+      const newDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+
+      onAdd(
+        {
+          description: t.description,
+          amount: t.amount,
+          date: newDate,
+          category: t.category as Category,
+          type: t.type,
+        },
+        { allowDuplicate: true }
+      );
+    });
+
+    if (showToast) {
+      showToast(`${selected.length} transação(ões) copiadas para o mês ${formatDateForDisplay(copyDate).slice(3)}`, 'success');
+    }
+
+    setShowCopyModal(false);
+    setCopySourceMonth(null);
+    setCopyTransactions([]);
+    setCopySelectedTransactions(new Set());
+    setCopyDate(getLocalDateString());
+  };
+
   // Organizar transações por mês
   const transactionsByMonth = useMemo(() => {
     // Primeiro, remover duplicatas por ID antes de agrupar
@@ -101,11 +203,6 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
     }
     
     const grouped: { [key: string]: Transaction[] } = {};
-    
-    // Obter mês e ano atual para comparação
-    const now = new Date();
-    const nowMonth = now.getMonth() + 1; // 1-12
-    const nowYear = now.getFullYear();
     
     uniqueTransactions.forEach(transaction => {
       // Extrair mês e ano diretamente da string da data (formato YYYY-MM-DD) para evitar problemas de timezone
@@ -122,18 +219,26 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
       grouped[monthKey].push(transaction);
     });
 
-    // Ordenar transações dentro de cada mês (da mais atual para a mais futura)
+    // Ordenar transações dentro de cada mês:
+    // - Primeiro todas as DESPESAS (expense), por data ascendente
+    // - Depois todas as RECEITAS (income), por data ascendente
     Object.keys(grouped).forEach(monthKey => {
       grouped[monthKey].sort((a, b) => {
-        // Comparar datas diretamente como strings (YYYY-MM-DD)
-        // Strings no formato YYYY-MM-DD podem ser comparadas diretamente
+        const typeWeightA = a.type === 'expense' ? 0 : 1;
+        const typeWeightB = b.type === 'expense' ? 0 : 1;
+
+        if (typeWeightA !== typeWeightB) {
+          return typeWeightA - typeWeightB;
+        }
+
+        // Dentro de cada grupo (despesas ou receitas), ordenar por data ascendente
         if (a.date > b.date) return 1;
         if (a.date < b.date) return -1;
         return 0;
       });
     });
 
-    // Converter para array com label do mês e ordenar meses (da mais atual para a mais futura)
+    // Converter para array com label do mês e ordenar meses
     const result = Object.entries(grouped).map(([monthKey, monthTransactions]) => {
       // Extrair mês e ano da primeira transação
       const [yearStr, monthStr] = monthTransactions[0].date.split('-');
@@ -153,38 +258,15 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
       return [monthLabel, monthTransactions, monthLabelFull] as [string, Transaction[], string];
     });
 
+    // Ordenar meses do mais recente para o mais antigo (ano/mês desc)
     return result.sort((a, b) => {
-      // Extrair mês e ano das primeiras transações de cada grupo
       const [yearAStr, monthAStr] = a[1][0].date.split('-');
-      const yearA = parseInt(yearAStr);
-      const monthA = parseInt(monthAStr); // 1-12
-      
       const [yearBStr, monthBStr] = b[1][0].date.split('-');
-      const yearB = parseInt(yearBStr);
-      const monthB = parseInt(monthBStr); // 1-12
-      
-      // Verificar se é mês atual
-      const isACurrent = yearA === nowYear && monthA === nowMonth;
-      const isBCurrent = yearB === nowYear && monthB === nowMonth;
-      
-      // Verificar se é futuro
-      const isAFuture = yearA > nowYear || (yearA === nowYear && monthA > nowMonth);
-      const isBFuture = yearB > nowYear || (yearB === nowYear && monthB > nowMonth);
-      
-      // Mês atual primeiro
-      if (isACurrent && !isBCurrent) return -1;
-      if (!isACurrent && isBCurrent) return 1;
-      
-      // Depois futuros (do mais próximo para o mais distante)
-      if (isAFuture && isBFuture) {
-        // Comparar por ano e mês
-        if (yearA !== yearB) return yearA - yearB;
-        return monthA - monthB;
-      }
-      if (isAFuture && !isBFuture) return -1;
-      if (!isAFuture && isBFuture) return 1;
-      
-      // Por último passados (do mais recente para o mais antigo)
+      const yearA = parseInt(yearAStr, 10);
+      const monthA = parseInt(monthAStr, 10);
+      const yearB = parseInt(yearBStr, 10);
+      const monthB = parseInt(monthBStr, 10);
+
       if (yearA !== yearB) return yearB - yearA;
       return monthB - monthA;
     });
@@ -301,6 +383,9 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
             // Verificar se é futuro
             const isFutureMonth = transactionYear > nowYear || (transactionYear === nowYear && transactionMonth > nowMonth);
 
+            // Status de "pago" para o mês
+            const allPaidInMonth = monthTransactions.length > 0 && monthTransactions.every(t => paidTransactions.has(t.id));
+
             const isExpanded = expandedMonths.has(monthLabelFull);
             
             return (
@@ -329,6 +414,47 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                         ) : (
                           <ChevronDown className={isCurrentMonth ? 'text-indigo-600' : isFutureMonth ? 'text-green-600' : 'text-slate-600'} size={20} />
                         )}
+                      </button>
+                      <button
+                        onClick={() => {
+                          setPaidTransactions(prev => {
+                            const next = new Set(prev);
+                            if (allPaidInMonth) {
+                              // Desmarcar todas como pagas
+                              monthTransactions.forEach(t => next.delete(t.id));
+                            } else {
+                              // Marcar todas como pagas
+                              monthTransactions.forEach(t => next.add(t.id));
+                            }
+                            persistPaidTransactions(next);
+                            return next;
+                          });
+                        }}
+                        className={`p-2 rounded-full transition-colors md:ml-1 ${
+                          allPaidInMonth
+                            ? 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100'
+                            : 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100'
+                        }`}
+                        title={allPaidInMonth ? 'Desmarcar todas como pagas' : 'Marcar todas as transações deste mês como pagas'}
+                      >
+                        <CheckCircle2 size={18} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          setCopySourceMonth({ month: transactionMonth, year: transactionYear, label: monthLabelFull });
+                          setCopyTransactions(monthTransactions);
+                          setCopySelectedTransactions(new Set(monthTransactions.map(t => t.id)));
+                          // Data padrão: primeiro dia do próximo mês
+                          const nextMonth = transactionMonth === 12 ? 1 : transactionMonth + 1;
+                          const nextYear = transactionMonth === 12 ? transactionYear + 1 : transactionYear;
+                          const defaultDate = `${nextYear}-${String(nextMonth).padStart(2, '0')}-01`;
+                          setCopyDate(defaultDate);
+                          setShowCopyModal(true);
+                        }}
+                        className="p-2 text-indigo-700 hover:text-indigo-900 hover:bg-indigo-200 rounded-lg transition-colors md:ml-2"
+                        title="Copiar transações deste mês para outra data"
+                      >
+                        <Copy size={18} />
                       </button>
                       {onDeleteByMonth && (
                         <button
@@ -398,8 +524,10 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                     <tbody className="divide-y divide-slate-100">
                       {monthTransactions.map((t) => {
                         const isSelectedForDelete = transactionsToDelete.has(t.id);
+                        const isPaid = paidTransactions.has(t.id);
+                        const textBaseClass = isPaid ? 'line-through text-slate-400' : '';
                         return (
-                          <tr key={t.id} className="hover:bg-slate-50/50 transition-colors">
+                          <tr key={t.id} className={`hover:bg-slate-50/50 transition-colors ${isPaid ? 'bg-slate-50' : ''}`}>
                             {deleteSelectionMode && (
                               <td className="px-6 py-4">
                                 <input
@@ -421,23 +549,45 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                               </td>
                             )}
                             <td className="px-6 py-4">
-                              <div className="font-semibold text-slate-800">{t.description}</div>
-                              <div className="text-xs text-slate-400 md:hidden">{t.category}</div>
+                              <div className={`font-semibold ${isPaid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.description}</div>
+                              <div className={`text-xs md:hidden ${isPaid ? 'text-slate-300 line-through' : 'text-slate-400'}`}>{t.category}</div>
                             </td>
-                            <td className="px-6 py-4 text-sm text-slate-600">{t.category}</td>
-                            <td className="px-6 py-4 text-sm text-slate-600">
+                            <td className={`px-6 py-4 text-sm ${isPaid ? 'text-slate-300 line-through' : 'text-slate-600'}`}>{t.category}</td>
+                            <td className={`px-6 py-4 text-sm ${isPaid ? 'text-slate-300 line-through' : 'text-slate-600'}`}>
                               {formatDateForDisplay(t.date)}
                             </td>
-                            <td className={`px-6 py-4 text-right font-bold text-sm ${t.type === 'income' ? 'text-green-600' : 'text-slate-700'}`}>
+                            <td className={`px-6 py-4 text-right font-bold text-sm ${
+                              isPaid
+                                ? 'text-slate-300 line-through'
+                                : t.type === 'income'
+                                  ? 'text-green-600'
+                                  : 'text-slate-700'
+                            }`}>
                               {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                             </td>
                             <td className="px-6 py-4 text-center">
                               {!deleteSelectionMode && (
                                 <div className="flex items-center justify-center gap-2">
+                                  <button
+                                    onClick={() => togglePaid(t.id)}
+                                    className={`p-2 rounded-full transition-colors ${
+                                      isPaid
+                                        ? 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100'
+                                        : 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100'
+                                    }`}
+                                    title={isPaid ? 'Marcar como não paga' : 'Marcar como paga'}
+                                  >
+                                    <CheckCircle2 size={18} />
+                                  </button>
                                   <button 
-                                    onClick={() => handleOpenModal(t)}
-                                    className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
-                                    title="Editar transação"
+                                    onClick={() => !isPaid && handleOpenModal(t)}
+                                    disabled={isPaid}
+                                    className={`p-2 rounded-full transition-colors ${
+                                      isPaid
+                                        ? 'text-slate-300 cursor-not-allowed'
+                                        : 'text-indigo-700 hover:text-indigo-900 hover:bg-indigo-200'
+                                    }`}
+                                    title={isPaid ? 'Desmarque como paga para editar' : 'Editar transação'}
                                   >
                                     <Edit2 size={18} />
                                   </button>
@@ -446,7 +596,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                                       setTransactionToDelete(t.id);
                                       setShowDeleteModal(true);
                                     }}
-                                    className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+                                    className="p-2 rounded-full text-red-600 hover:text-red-800 hover:bg-red-100 transition-colors"
                                     title="Excluir transação"
                                   >
                                     <Trash2 size={18} />
@@ -637,6 +787,137 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                 className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
               >
                 Confirmar Exclusão
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Cópia de Transações entre Meses */}
+      {showCopyModal && copySourceMonth && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-3xl shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-xl font-bold text-slate-800">
+                Copiar transações de {copySourceMonth.label}
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Selecione quais transações deseja copiar e escolha a <strong>data de migração</strong> para o novo mês.
+              </p>
+            </div>
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  Data para migração
+                </label>
+                <input
+                  type="date"
+                  value={copyDate}
+                  onChange={(e) => setCopyDate(e.target.value)}
+                  className="w-full md:w-64 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"
+                  required
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  Todas as transações selecionadas serão copiadas para esta data.
+                </p>
+              </div>
+
+              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs text-slate-500">
+                  <span>
+                    {copySelectedTransactions.size} de {copyTransactions.length} transação(ões) selecionada(s)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (copySelectedTransactions.size === copyTransactions.length) {
+                        setCopySelectedTransactions(new Set());
+                      } else {
+                        setCopySelectedTransactions(new Set(copyTransactions.map(t => t.id)));
+                      }
+                    }}
+                    className="text-indigo-600 hover:text-indigo-700 font-semibold"
+                  >
+                    {copySelectedTransactions.size === copyTransactions.length ? 'Desmarcar todas' : 'Selecionar todas'}
+                  </button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-500 uppercase font-bold tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3 w-10"></th>
+                        <th className="px-4 py-3">Descrição</th>
+                        <th className="px-4 py-3">Categoria</th>
+                        <th className="px-4 py-3">Data original</th>
+                        <th className="px-4 py-3 text-right">Valor</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {copyTransactions.map((t) => {
+                        const isSelected = copySelectedTransactions.has(t.id);
+                        return (
+                          <tr key={t.id} className="hover:bg-slate-50/70 transition-colors">
+                            <td className="px-4 py-3">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  setCopySelectedTransactions((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(t.id)) {
+                                      next.delete(t.id);
+                                    } else {
+                                      next.add(t.id);
+                                    }
+                                    return next;
+                                  });
+                                }}
+                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500"
+                              />
+                            </td>
+                            <td className="px-4 py-3">
+                              <div className="font-semibold text-slate-800 text-xs md:text-sm">
+                                {t.description}
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-slate-600">
+                              {t.category}
+                            </td>
+                            <td className="px-4 py-3 text-xs text-slate-500">
+                              {formatDateForDisplay(t.date)}
+                            </td>
+                            <td className={`px-4 py-3 text-right font-bold text-xs md:text-sm ${t.type === 'income' ? 'text-green-600' : 'text-slate-700'}`}>
+                              {t.type === 'income' ? '+' : '-'} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex flex-col md:flex-row gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCopyModal(false);
+                  setCopySourceMonth(null);
+                  setCopyTransactions([]);
+                  setCopySelectedTransactions(new Set());
+                  setCopyDate(getLocalDateString());
+                }}
+                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmCopy}
+                className="flex-1 py-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 rounded-xl disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={copySelectedTransactions.size === 0 || !copyDate}
+              >
+                Copiar {copySelectedTransactions.size > 0 ? `(${copySelectedTransactions.size})` : ''}
               </button>
             </div>
           </div>
