@@ -35,7 +35,7 @@ const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [showSupportBanner, setShowSupportBanner] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const APP_VERSION = "1.0.1"; // Versão do app
+  const APP_VERSION = "1.0.2"; // Versão do app
   const lastLoadTimeRef = useRef<number>(0);
   const isLoadingRef = useRef<boolean>(false);
 
@@ -75,7 +75,7 @@ const Layout: React.FC<LayoutProps> = ({
         isLoadingRef.current = false;
       }
     },
-    [user?.email]
+    [user?.email],
   );
 
   useEffect(() => {
@@ -113,7 +113,7 @@ const Layout: React.FC<LayoutProps> = ({
     return () => {
       window.removeEventListener(
         "notification-updated",
-        handleNotificationUpdate
+        handleNotificationUpdate,
       );
     };
   }, [loadUnreadCount]);
@@ -145,7 +145,7 @@ const Layout: React.FC<LayoutProps> = ({
       const lastContribution = new Date(user.lastContributionDate);
       const now = new Date();
       const daysSinceContribution = Math.floor(
-        (now.getTime() - lastContribution.getTime()) / (1000 * 60 * 60 * 24)
+        (now.getTime() - lastContribution.getTime()) / (1000 * 60 * 60 * 24),
       );
 
       setShowSupportBanner(daysSinceContribution >= 30);
@@ -161,12 +161,12 @@ const Layout: React.FC<LayoutProps> = ({
   const handleCopyPix = async () => {
     try {
       await navigator.clipboard.writeText(
-        "78b60641-9574-42f8-bad4-d9709b49dc61"
+        "78b60641-9574-42f8-bad4-d9709b49dc61",
       );
       alert("PIX copiado! Chave: 78b60641-9574-42f8-bad4-d9709b49dc61");
     } catch (err) {
       alert(
-        "Chave PIX: 78b60641-9574-42f8-bad4-d9709b49dc61\n(Copie manualmente)"
+        "Chave PIX: 78b60641-9574-42f8-bad4-d9709b49dc61\n(Copie manualmente)",
       );
     }
   };

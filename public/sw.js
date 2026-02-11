@@ -1,5 +1,5 @@
 // Service Worker para Kako Fin PWA
-const CACHE_NAME = "kako-fin-v1.0.1";
+const CACHE_NAME = "kako-fin-v1.0.2";
 const urlsToCache = [
   "/",
   "/index.html",
@@ -21,13 +21,13 @@ self.addEventListener("install", (event) => {
             cache.add(url).catch((err) => {
               console.warn(`⚠️ Não foi possível fazer cache de ${url}:`, err);
               return null;
-            })
-          )
+            }),
+          ),
         );
       })
       .catch((error) => {
         console.error("❌ Erro ao fazer cache:", error);
-      })
+      }),
   );
   self.skipWaiting();
 });
@@ -42,9 +42,9 @@ self.addEventListener("activate", (event) => {
             console.log("🗑️ Removendo cache antigo:", cacheName);
             return caches.delete(cacheName);
           }
-        })
+        }),
       );
-    })
+    }),
   );
   return self.clients.claim();
 });
@@ -78,7 +78,7 @@ self.addEventListener("fetch", (event) => {
             return caches.match("/index.html");
           }
         });
-      })
+      }),
   );
 });
 
