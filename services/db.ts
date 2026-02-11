@@ -1010,6 +1010,120 @@ class CloudDatabase {
     console.log('👥 Usuários encontrados no localStorage:', userIds.length, userIds);
     return userIds;
   }
+
+  // ========== STATUS DE PAGAMENTO DAS TRANSAÇÕES ==========
+
+  private getPaidLocalStorageKey(userId: string): string {
+    return `fintrack_${userId}_paid_transactions`;
+  }
+
+  private getPaidFromLocalStorage(userId: string): string[] {
+    try {
+      const key = this.getPaidLocalStorageKey(userId);
+      const stored = localStorage.getItem(key);
+      if (!stored) return [];
+      const ids: unknown = JSON.parse(stored);
+      if (Array.isArray(ids)) {
+        return ids.filter((id): id is string => typeof id === 'string');
+      }
+      return [];
+    } catch (error) {
+      console.error('Erro ao ler transações pagas do localStorage:', error);
+      return [];
+    }
+  }
+
+  private savePaidToLocalStorage(userId: string, ids: string[]): void {
+    try {
+      const key = this.getPaidLocalStorageKey(userId);
+      localStorage.setItem(key, JSON.stringify(ids));
+    } catch (error) {
+      console.error('Erro ao salvar transações pagas no localStorage:', error);
+    }
+  }
+
+  // Buscar IDs de transações marcadas como pagas para um usuário
+  async getPaidTransactionIds(userId: string): Promise<string[]> {
+    // Se Supabase não estiver configurado, usar apenas localStorage
+    if (!this.isSupabaseConfigured()) {
+      return this.getPaidFromLocalStorage(userId);
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('transaction_status')
+        .select('transaction_id')
+        .eq('user_id', userId)
+        .eq('is_paid', true);
+
+      if (error) {
+        console.warn('⚠️ Erro ao buscar status de pagamento das transações no Supabase. Usando localStorage.', error);
+        return this.getPaidFromLocalStorage(userId);
+      }
+
+      const ids = (data || []).map((row: any) => row.transaction_id as string);
+      // Sincronizar com localStorage para acesso rápido
+      this.savePaidToLocalStorage(userId, ids);
+      return ids;
+    } catch (error) {
+      console.warn('⚠️ Erro ao buscar status de pagamento das transações. Usando localStorage.', error);
+      return this.getPaidFromLocalStorage(userId);
+    }
+  }
+
+  // Atualizar status de pagamento de uma transação (true = paga, false = não paga)
+  async setTransactionPaidStatus(userId: string, transactionId: string, isPaid: boolean): Promise<void> {
+    // Atualizar localStorage primeiro (para feedback imediato)
+    const currentIds = this.getPaidFromLocalStorage(userId);
+    const set = new Set(currentIds);
+    if (isPaid) {
+      set.add(transactionId);
+    } else {
+      set.delete(transactionId);
+    }
+    this.savePaidToLocalStorage(userId, Array.from(set));
+
+    // Se Supabase não estiver configurado, nada mais a fazer
+    if (!this.isSupabaseConfigured()) {
+      return;
+    }
+
+    try {
+      if (isPaid) {
+        // Upsert para marcar como paga
+        const { error } = await supabase
+          .from('transaction_status')
+          .upsert(
+            {
+              user_id: userId,
+              transaction_id: transactionId,
+              is_paid: true,
+              updated_at: new Date().toISOString(),
+            },
+            {
+              onConflict: 'user_id,transaction_id',
+            }
+          );
+
+        if (error) {
+          console.warn('⚠️ Erro ao salvar status de pagamento no Supabase:', error);
+        }
+      } else {
+        // Remover registro (ou poderia atualizar para is_paid = false)
+        const { error } = await supabase
+          .from('transaction_status')
+          .delete()
+          .eq('user_id', userId)
+          .eq('transaction_id', transactionId);
+
+        if (error) {
+          console.warn('⚠️ Erro ao remover status de pagamento no Supabase:', error);
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Erro ao atualizar status de pagamento no Supabase:', error);
+    }
+  }
 }
 
 export const db = new CloudDatabase();

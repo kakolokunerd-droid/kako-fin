@@ -2,6 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Search, Filter, Trash2, Edit2, Calendar, ChevronDown, ChevronUp, Copy, CheckCircle2 } from 'lucide-react';
 import { Transaction, TransactionType, Category } from '../types';
+import { db } from '../services/db';
 
 interface TransactionsProps {
   transactions: Transaction[];
@@ -55,38 +56,43 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
   // Estado de "marcar como paga"
   const [paidTransactions, setPaidTransactions] = useState<Set<string>>(new Set());
 
-  // Carregar estado de pagos do localStorage (por usuário)
+  // Carregar estado de pagos do banco/localStorage por usuário
   useEffect(() => {
     if (!userEmail) return;
-    try {
-      const stored = localStorage.getItem(`fintrack_${userEmail}_paid_transactions`);
-      if (stored) {
-        const ids: string[] = JSON.parse(stored);
-        setPaidTransactions(new Set(ids));
+    let isMounted = true;
+
+    const loadPaidStatus = async () => {
+      try {
+        const ids = await db.getPaidTransactionIds(userEmail);
+        if (isMounted) {
+          setPaidTransactions(new Set(ids));
+        }
+      } catch (error) {
+        console.error('Erro ao carregar status de pagamento das transações:', error);
       }
-    } catch (error) {
-      console.error('Erro ao carregar transações pagas do localStorage:', error);
-    }
+    };
+
+    loadPaidStatus();
+
+    return () => {
+      isMounted = false;
+    };
   }, [userEmail]);
 
-  const persistPaidTransactions = (next: Set<string>) => {
-    if (!userEmail) return;
-    try {
-      localStorage.setItem(`fintrack_${userEmail}_paid_transactions`, JSON.stringify(Array.from(next)));
-    } catch (error) {
-      console.error('Erro ao salvar transações pagas no localStorage:', error);
-    }
-  };
-
   const togglePaid = (id: string) => {
+    if (!userEmail) return;
     setPaidTransactions(prev => {
       const next = new Set(prev);
+      const willBePaid = !next.has(id);
       if (next.has(id)) {
         next.delete(id);
       } else {
         next.add(id);
       }
-      persistPaidTransactions(next);
+      // Persistir no banco/localStorage (fire-and-forget)
+      db.setTransactionPaidStatus(userEmail, id, willBePaid).catch(error => {
+        console.error('Erro ao atualizar status de pagamento da transação:', error);
+      });
       return next;
     });
   };
@@ -417,6 +423,9 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                       </button>
                       <button
                         onClick={() => {
+                          if (!userEmail) return;
+
+                          // Atualizar estado local
                           setPaidTransactions(prev => {
                             const next = new Set(prev);
                             if (allPaidInMonth) {
@@ -426,8 +435,15 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                               // Marcar todas como pagas
                               monthTransactions.forEach(t => next.add(t.id));
                             }
-                            persistPaidTransactions(next);
                             return next;
+                          });
+
+                          // Persistir no banco/localStorage (fire-and-forget)
+                          const willBePaid = !allPaidInMonth;
+                          monthTransactions.forEach(t => {
+                            db.setTransactionPaidStatus(userEmail, t.id, willBePaid).catch(error => {
+                              console.error('Erro ao atualizar status de pagamento do mês:', error);
+                            });
                           });
                         }}
                         className={`p-2 rounded-full transition-colors md:ml-1 ${
