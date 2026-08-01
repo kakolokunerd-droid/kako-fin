@@ -37,13 +37,11 @@ export function useSubscription(auth: AuthState): SubscriptionInfo {
     // Trial é gratuito permanente (sem vencimento)
     const daysRemaining = isTrial ? -1 : 0; // -1 indica permanente
 
-    // Verificar se está ativo
-    // Trial sempre ativo (gratuito permanente)
-    // Outros planos verificam expiração
+    // Trial sempre ativo; planos pagos: ativo se sem data de expiração ou data futura
     const isActive =
       isTrial ||
-      (user.subscriptionExpiresAt &&
-        new Date(user.subscriptionExpiresAt) > new Date());
+      !user.subscriptionExpiresAt ||
+      new Date(user.subscriptionExpiresAt) > new Date();
 
     // Permissões baseadas no plano conforme tabela:
     // Trial: Dashboard, Transações, Compras, Notificações, Perfil (SEM Metas, Insights, Relatórios)

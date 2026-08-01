@@ -278,24 +278,6 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
     });
   }, [transactions]);
 
-  // Inicializar todos os meses como expandidos por padrão
-  useEffect(() => {
-    if (transactionsByMonth.length > 0) {
-      const allMonths = new Set(transactionsByMonth.map(([, , monthLabelFull]) => monthLabelFull));
-      setExpandedMonths(prev => {
-        // Só atualiza se houver novos meses que não estão no estado atual
-        const hasNewMonths = Array.from(allMonths).some(month => !prev.has(month));
-        if (hasNewMonths) {
-          // Mantém os meses já expandidos e adiciona os novos
-          const updated = new Set(prev);
-          allMonths.forEach(month => updated.add(month));
-          return updated;
-        }
-        return prev;
-      });
-    }
-  }, [transactionsByMonth]);
-
   // Calcular totais por mês
   const getMonthTotals = (transactions: Transaction[]) => {
     const income = transactions

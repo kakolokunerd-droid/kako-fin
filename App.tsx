@@ -95,39 +95,45 @@ const App: React.FC = () => {
     };
   }, []);
 
-  // Loop de verificação de contribuições a cada 2 minutos
+  // Recarregar perfil do banco (plano, contribuição, role) — evita ficar preso no localStorage
   useEffect(() => {
     if (!auth.isAuthenticated || !auth.user) return;
 
-    const checkUserContribution = async () => {
+    const syncProfileFromDb = async () => {
       try {
-        // Recarregar perfil do banco para verificar atualizações
         const currentEmail = auth.user!.email;
         const updatedProfile = await db.getProfile(currentEmail);
-        if (updatedProfile) {
-          const currentDate = auth.user.lastContributionDate || '';
-          const updatedDate = updatedProfile.lastContributionDate || '';
-          
-          if (updatedDate !== currentDate) {
-            // Atualizar perfil se houver mudança na data de contribuição
-            setAuth(prev => ({
-              ...prev,
-              user: updatedProfile
-            }));
-            console.log('✅ Contribuição atualizada para:', currentEmail);
-          }
+        if (!updatedProfile) return;
+
+        const prev = auth.user!;
+        const changed =
+          (updatedProfile.lastContributionDate || '') !== (prev.lastContributionDate || '') ||
+          (updatedProfile.subscriptionPlan || 'trial') !== (prev.subscriptionPlan || 'trial') ||
+          (updatedProfile.subscriptionExpiresAt || '') !== (prev.subscriptionExpiresAt || '') ||
+          (updatedProfile.isTrialActive ?? true) !== (prev.isTrialActive ?? true) ||
+          (updatedProfile.role || 'user') !== (prev.role || 'user') ||
+          updatedProfile.name !== prev.name;
+
+        if (changed) {
+          setAuth((current) => ({
+            ...current,
+            user: updatedProfile,
+          }));
+          console.log('✅ Perfil sincronizado do banco para:', currentEmail, {
+            plan: updatedProfile.subscriptionPlan,
+          });
         }
       } catch (error) {
-        console.error('Erro ao verificar contribuição:', error);
+        console.error('Erro ao sincronizar perfil:', error);
       }
     };
 
-    checkUserContribution(); // Verificar imediatamente
-    const interval = setInterval(checkUserContribution, 120000); // A cada 2 minutos
+    syncProfileFromDb(); // Ao abrir / logar
+    const interval = setInterval(syncProfileFromDb, 120000); // A cada 2 minutos
 
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [auth.isAuthenticated, auth.user?.email, auth.user?.lastContributionDate]);
+  }, [auth.isAuthenticated, auth.user?.email]);
 
   const loadUserData = async (userId: string) => {
     setIsLoading(true);
