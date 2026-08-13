@@ -18,6 +18,7 @@ import {
 import { Transaction, Goal, AuthState } from '../types';
 import { TrendingUp, TrendingDown, Target, Calendar, Zap, BarChart3 } from 'lucide-react';
 import SubscriptionBlock from './SubscriptionBlock';
+import SavingsChart from './SavingsChart';
 
 interface ReportsProps {
   transactions: Transaction[];
@@ -365,6 +366,12 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals, auth }) => {
               </BarChart>
             </ResponsiveContainer>
           </div>
+
+          <SavingsChart
+            transactions={transactions}
+            userEmail={auth.user?.email}
+            title="Economia por antecipação / desconto"
+          />
 
           {/* Report 3: Evolução de Saldo */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-96">

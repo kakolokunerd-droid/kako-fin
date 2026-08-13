@@ -73,3 +73,20 @@ export interface Notification {
   isRead: boolean;
   readAt?: string;
 }
+
+/** Valor efetivamente pago/recebido ao marcar a transação */
+export interface PaidTransactionInfo {
+  paidAmount: number;
+  updatedAt?: string;
+}
+
+export type PaidTransactionsMap = Record<string, PaidTransactionInfo>;
+
+export type SavingsPeriod =
+  | 'current_month'
+  | 'quarter'
+  | '3m'
+  | '6m'
+  | '12m'
+  | '2y'
+  | '5y';

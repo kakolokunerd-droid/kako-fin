@@ -1,4 +1,4 @@
-import { Transaction, Goal, UserProfile, Notification } from "../types";
+import { Transaction, Goal, UserProfile, Notification, PaidTransactionsMap, PaidTransactionInfo } from "../types";
 import { supabase } from "./supabaseClient";
 
 import { hashPassword, verifyPassword } from './passwordService';
@@ -1017,99 +1017,151 @@ class CloudDatabase {
     return `fintrack_${userId}_paid_transactions`;
   }
 
-  private getPaidFromLocalStorage(userId: string): string[] {
+  private normalizePaidMap(raw: unknown): PaidTransactionsMap {
+    const result: PaidTransactionsMap = {};
+    if (!raw) return result;
+
+    // Formato antigo: string[]
+    if (Array.isArray(raw)) {
+      for (const id of raw) {
+        if (typeof id === 'string') {
+          result[id] = { paidAmount: -1 }; // -1 = usar valor integral da transação
+        }
+      }
+      return result;
+    }
+
+    if (typeof raw === 'object') {
+      for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (typeof value === 'number') {
+          result[id] = { paidAmount: value };
+        } else if (value && typeof value === 'object' && 'paidAmount' in (value as object)) {
+          const paidAmount = Number((value as PaidTransactionInfo).paidAmount);
+          result[id] = {
+            paidAmount: Number.isFinite(paidAmount) ? paidAmount : -1,
+            updatedAt: (value as PaidTransactionInfo).updatedAt,
+          };
+        }
+      }
+    }
+    return result;
+  }
+
+  private getPaidMapFromLocalStorage(userId: string): PaidTransactionsMap {
     try {
       const key = this.getPaidLocalStorageKey(userId);
       const stored = localStorage.getItem(key);
-      if (!stored) return [];
-      const ids: unknown = JSON.parse(stored);
-      if (Array.isArray(ids)) {
-        return ids.filter((id): id is string => typeof id === 'string');
-      }
-      return [];
+      if (!stored) return {};
+      return this.normalizePaidMap(JSON.parse(stored));
     } catch (error) {
       console.error('Erro ao ler transações pagas do localStorage:', error);
-      return [];
+      return {};
     }
   }
 
-  private savePaidToLocalStorage(userId: string, ids: string[]): void {
+  private savePaidMapToLocalStorage(userId: string, map: PaidTransactionsMap): void {
     try {
       const key = this.getPaidLocalStorageKey(userId);
-      localStorage.setItem(key, JSON.stringify(ids));
+      localStorage.setItem(key, JSON.stringify(map));
     } catch (error) {
       console.error('Erro ao salvar transações pagas no localStorage:', error);
     }
   }
 
-  // Buscar IDs de transações marcadas como pagas para um usuário
-  async getPaidTransactionIds(userId: string): Promise<string[]> {
-    // Se Supabase não estiver configurado, usar apenas localStorage
+  /** Resolve o valor efetivamente pago (-1 no storage = valor integral) */
+  resolvePaidAmount(info: PaidTransactionInfo | undefined, originalAmount: number): number {
+    if (!info) return 0;
+    if (info.paidAmount < 0) return originalAmount;
+    return info.paidAmount;
+  }
+
+  // Buscar mapa de transações pagas (id -> valor pago)
+  async getPaidTransactionsMap(userId: string): Promise<PaidTransactionsMap> {
     if (!this.isSupabaseConfigured()) {
-      return this.getPaidFromLocalStorage(userId);
+      return this.getPaidMapFromLocalStorage(userId);
     }
 
     try {
       const { data, error } = await supabase
         .from('transaction_status')
-        .select('transaction_id')
+        .select('transaction_id, paid_amount, is_paid, updated_at')
         .eq('user_id', userId)
         .eq('is_paid', true);
 
       if (error) {
-        console.warn('⚠️ Erro ao buscar status de pagamento das transações no Supabase. Usando localStorage.', error);
-        return this.getPaidFromLocalStorage(userId);
+        console.warn('⚠️ Erro ao buscar status de pagamento no Supabase. Usando localStorage.', error);
+        return this.getPaidMapFromLocalStorage(userId);
       }
 
-      const ids = (data || []).map((row: any) => row.transaction_id as string);
-      // Sincronizar com localStorage para acesso rápido
-      this.savePaidToLocalStorage(userId, ids);
-      return ids;
+      const map: PaidTransactionsMap = {};
+      for (const row of data || []) {
+        const paidAmount =
+          row.paid_amount === null || row.paid_amount === undefined
+            ? -1
+            : Number(row.paid_amount);
+        map[row.transaction_id] = {
+          paidAmount: Number.isFinite(paidAmount) ? paidAmount : -1,
+          updatedAt: row.updated_at || undefined,
+        };
+      }
+      this.savePaidMapToLocalStorage(userId, map);
+      return map;
     } catch (error) {
-      console.warn('⚠️ Erro ao buscar status de pagamento das transações. Usando localStorage.', error);
-      return this.getPaidFromLocalStorage(userId);
+      console.warn('⚠️ Erro ao buscar status de pagamento. Usando localStorage.', error);
+      return this.getPaidMapFromLocalStorage(userId);
     }
   }
 
-  // Atualizar status de pagamento de uma transação (true = paga, false = não paga)
-  async setTransactionPaidStatus(userId: string, transactionId: string, isPaid: boolean): Promise<void> {
-    // Atualizar localStorage primeiro (para feedback imediato)
-    const currentIds = this.getPaidFromLocalStorage(userId);
-    const set = new Set(currentIds);
-    if (isPaid) {
-      set.add(transactionId);
-    } else {
-      set.delete(transactionId);
-    }
-    this.savePaidToLocalStorage(userId, Array.from(set));
+  // Compat: retorna apenas IDs pagos
+  async getPaidTransactionIds(userId: string): Promise<string[]> {
+    const map = await this.getPaidTransactionsMap(userId);
+    return Object.keys(map);
+  }
 
-    // Se Supabase não estiver configurado, nada mais a fazer
+  // Marcar/desmarcar pagamento com valor efetivo
+  async setTransactionPaidStatus(
+    userId: string,
+    transactionId: string,
+    isPaid: boolean,
+    paidAmount?: number
+  ): Promise<void> {
+    const current = this.getPaidMapFromLocalStorage(userId);
+
+    if (isPaid) {
+      current[transactionId] = {
+        paidAmount:
+          paidAmount === undefined || !Number.isFinite(paidAmount) ? -1 : paidAmount,
+        updatedAt: new Date().toISOString(),
+      };
+    } else {
+      delete current[transactionId];
+    }
+    this.savePaidMapToLocalStorage(userId, current);
+
     if (!this.isSupabaseConfigured()) {
       return;
     }
 
     try {
       if (isPaid) {
-        // Upsert para marcar como paga
-        const { error } = await supabase
-          .from('transaction_status')
-          .upsert(
-            {
-              user_id: userId,
-              transaction_id: transactionId,
-              is_paid: true,
-              updated_at: new Date().toISOString(),
-            },
-            {
-              onConflict: 'user_id,transaction_id',
-            }
-          );
+        const { error } = await supabase.from('transaction_status').upsert(
+          {
+            user_id: userId,
+            transaction_id: transactionId,
+            is_paid: true,
+            paid_amount:
+              paidAmount === undefined || !Number.isFinite(paidAmount) ? null : paidAmount,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id,transaction_id',
+          }
+        );
 
         if (error) {
           console.warn('⚠️ Erro ao salvar status de pagamento no Supabase:', error);
         }
       } else {
-        // Remover registro (ou poderia atualizar para is_paid = false)
         const { error } = await supabase
           .from('transaction_status')
           .delete()

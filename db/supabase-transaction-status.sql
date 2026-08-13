@@ -5,6 +5,7 @@ create table if not exists public.transaction_status (
   user_id text not null,
   transaction_id text not null,
   is_paid boolean not null default false,
+  paid_amount numeric,
   updated_at timestamptz default now(),
   constraint transaction_status_pk primary key (user_id, transaction_id)
 );
@@ -19,4 +20,5 @@ comment on table public.transaction_status is 'Status de pagamento (pago / não 
 comment on column public.transaction_status.user_id is 'Identificador do usuário (email ou id usado na aplicação)';
 comment on column public.transaction_status.transaction_id is 'ID da transação na tabela transactions';
 comment on column public.transaction_status.is_paid is 'Indica se a transação foi marcada como paga';
+comment on column public.transaction_status.paid_amount is 'Valor efetivamente pago/recebido (desconto/antecipação)';
 

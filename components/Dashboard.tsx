@@ -13,6 +13,7 @@ import { Transaction, Goal, AuthState } from "../types";
 import { getFinancialAdvice } from "../services/aiService";
 import { useSubscription } from "../hooks/useSubscription";
 import SubscriptionBlock from "./SubscriptionBlock";
+import SavingsChart from "./SavingsChart";
 import {
   LineChart,
   Line,
@@ -31,7 +32,7 @@ import {
 interface DashboardProps {
   transactions: Transaction[];
   goals: Goal[];
-  user?: { lastContributionDate?: string };
+  user?: { lastContributionDate?: string; email?: string };
   auth?: AuthState;
 }
 
@@ -974,6 +975,12 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user, auth }
           </div>
         </div>
       </div>
+
+      <SavingsChart
+        transactions={transactions}
+        userEmail={user?.email || auth?.user?.email}
+        title="Economia por antecipação / desconto"
+      />
     </div>
   );
 };

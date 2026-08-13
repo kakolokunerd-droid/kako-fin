@@ -1,7 +1,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { Plus, Search, Filter, Trash2, Edit2, Calendar, ChevronDown, ChevronUp, Copy, CheckCircle2 } from 'lucide-react';
-import { Transaction, TransactionType, Category } from '../types';
+import { Transaction, TransactionType, Category, PaidTransactionsMap } from '../types';
 import { db } from '../services/db';
 
 interface TransactionsProps {
@@ -53,8 +53,12 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
   const [copySelectedTransactions, setCopySelectedTransactions] = useState<Set<string>>(new Set());
   const [copyDate, setCopyDate] = useState(getLocalDateString());
 
-  // Estado de "marcar como paga"
-  const [paidTransactions, setPaidTransactions] = useState<Set<string>>(new Set());
+  // Estado de "marcar como paga" (id -> valor efetivamente pago/recebido)
+  const [paidTransactions, setPaidTransactions] = useState<PaidTransactionsMap>({});
+  const [payModal, setPayModal] = useState<{
+    transaction: Transaction;
+    paidAmountInput: string;
+  } | null>(null);
 
   // Carregar estado de pagos do banco/localStorage por usuário
   useEffect(() => {
@@ -63,9 +67,9 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
 
     const loadPaidStatus = async () => {
       try {
-        const ids = await db.getPaidTransactionIds(userEmail);
+        const map = await db.getPaidTransactionsMap(userEmail);
         if (isMounted) {
-          setPaidTransactions(new Set(ids));
+          setPaidTransactions(map);
         }
       } catch (error) {
         console.error('Erro ao carregar status de pagamento das transações:', error);
@@ -79,22 +83,53 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
     };
   }, [userEmail]);
 
-  const togglePaid = (id: string) => {
+  const openPayModal = (transaction: Transaction) => {
+    setPayModal({
+      transaction,
+      paidAmountInput: transaction.amount.toFixed(2),
+    });
+  };
+
+  const confirmPayModal = () => {
+    if (!userEmail || !payModal) return;
+    const raw = payModal.paidAmountInput.replace(',', '.');
+    const paidAmount = parseFloat(raw);
+    if (!Number.isFinite(paidAmount) || paidAmount < 0) {
+      if (showToast) showToast('Informe um valor válido.', 'warning');
+      return;
+    }
+
+    const { transaction } = payModal;
+    setPaidTransactions(prev => ({
+      ...prev,
+      [transaction.id]: {
+        paidAmount,
+        updatedAt: new Date().toISOString(),
+      },
+    }));
+    db.setTransactionPaidStatus(userEmail, transaction.id, true, paidAmount).catch(error => {
+      console.error('Erro ao atualizar status de pagamento da transação:', error);
+    });
+    setPayModal(null);
+  };
+
+  const togglePaid = (transaction: Transaction) => {
     if (!userEmail) return;
-    setPaidTransactions(prev => {
-      const next = new Set(prev);
-      const willBePaid = !next.has(id);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      // Persistir no banco/localStorage (fire-and-forget)
-      db.setTransactionPaidStatus(userEmail, id, willBePaid).catch(error => {
+    const isPaid = !!paidTransactions[transaction.id];
+
+    if (isPaid) {
+      setPaidTransactions(prev => {
+        const next = { ...prev };
+        delete next[transaction.id];
+        return next;
+      });
+      db.setTransactionPaidStatus(userEmail, transaction.id, false).catch(error => {
         console.error('Erro ao atualizar status de pagamento da transação:', error);
       });
-      return next;
-    });
+      return;
+    }
+
+    openPayModal(transaction);
   };
 
   const resetForm = () => {
@@ -278,15 +313,50 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
     });
   }, [transactions]);
 
-  // Calcular totais por mês
-  const getMonthTotals = (transactions: Transaction[]) => {
-    const income = transactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + t.amount, 0);
-    const expense = transactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + t.amount, 0);
-    return { income, expense, balance: income - expense };
+  // Calcular totais por mês (incluindo pagos / pendentes / economia)
+  const getMonthTotals = (monthTxs: Transaction[]) => {
+    let income = 0;
+    let expense = 0;
+    let paidExpense = 0;
+    let receivedIncome = 0;
+    let pendingExpense = 0;
+    let pendingIncome = 0;
+    let savedAmount = 0;
+
+    for (const t of monthTxs) {
+      const info = paidTransactions[t.id];
+      const isPaid = !!info;
+      const effectivePaid = isPaid ? db.resolvePaidAmount(info, t.amount) : 0;
+
+      if (t.type === 'income') {
+        income += t.amount;
+        if (isPaid) {
+          receivedIncome += effectivePaid;
+          pendingIncome += Math.max(0, t.amount - effectivePaid);
+        } else {
+          pendingIncome += t.amount;
+        }
+      } else {
+        expense += t.amount;
+        if (isPaid) {
+          paidExpense += effectivePaid;
+          savedAmount += Math.max(0, t.amount - effectivePaid);
+        } else {
+          pendingExpense += t.amount;
+        }
+      }
+    }
+
+    return {
+      income,
+      expense,
+      balance: income - expense,
+      paidExpense,
+      pendingIncome,
+      pendingExpense,
+      savedAmount,
+      receivedIncome,
+    };
   };
 
   return (
@@ -372,7 +442,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
             const isFutureMonth = transactionYear > nowYear || (transactionYear === nowYear && transactionMonth > nowMonth);
 
             // Status de "pago" para o mês
-            const allPaidInMonth = monthTransactions.length > 0 && monthTransactions.every(t => paidTransactions.has(t.id));
+            const allPaidInMonth = monthTransactions.length > 0 && monthTransactions.every(t => !!paidTransactions[t.id]);
 
             const isExpanded = expandedMonths.has(monthLabelFull);
             
@@ -407,23 +477,31 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                         onClick={() => {
                           if (!userEmail) return;
 
-                          // Atualizar estado local
+                          const willBePaid = !allPaidInMonth;
                           setPaidTransactions(prev => {
-                            const next = new Set(prev);
-                            if (allPaidInMonth) {
-                              // Desmarcar todas como pagas
-                              monthTransactions.forEach(t => next.delete(t.id));
+                            const next = { ...prev };
+                            if (willBePaid) {
+                              monthTransactions.forEach(t => {
+                                next[t.id] = {
+                                  paidAmount: t.amount,
+                                  updatedAt: new Date().toISOString(),
+                                };
+                              });
                             } else {
-                              // Marcar todas como pagas
-                              monthTransactions.forEach(t => next.add(t.id));
+                              monthTransactions.forEach(t => {
+                                delete next[t.id];
+                              });
                             }
                             return next;
                           });
 
-                          // Persistir no banco/localStorage (fire-and-forget)
-                          const willBePaid = !allPaidInMonth;
                           monthTransactions.forEach(t => {
-                            db.setTransactionPaidStatus(userEmail, t.id, willBePaid).catch(error => {
+                            db.setTransactionPaidStatus(
+                              userEmail,
+                              t.id,
+                              willBePaid,
+                              willBePaid ? t.amount : undefined
+                            ).catch(error => {
                               console.error('Erro ao atualizar status de pagamento do mês:', error);
                             });
                           });
@@ -433,7 +511,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                             ? 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100'
                             : 'text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100'
                         }`}
-                        title={allPaidInMonth ? 'Desmarcar todas como pagas' : 'Marcar todas as transações deste mês como pagas'}
+                        title={allPaidInMonth ? 'Desmarcar todas como pagas' : 'Marcar todas as transações deste mês como pagas (valor integral)'}
                       >
                         <CheckCircle2 size={18} />
                       </button>
@@ -467,24 +545,52 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                         </button>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-4 sm:gap-6 text-sm">
-                      <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
-                        <p className="text-xs text-slate-500 font-medium mb-1">Receitas</p>
-                        <p className="font-bold text-green-600 text-base sm:text-sm">
-                          R$ {totals.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
+                    <div className="flex flex-col gap-3 text-sm w-full md:w-auto">
+                      <div className="flex flex-wrap gap-4 sm:gap-6">
+                        <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
+                          <p className="text-xs text-slate-500 font-medium mb-1">Receitas</p>
+                          <p className="font-bold text-green-600 text-base sm:text-sm">
+                            R$ {totals.income.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
+                          <p className="text-xs text-slate-500 font-medium mb-1">Despesas</p>
+                          <p className="font-bold text-red-600 text-base sm:text-sm">
+                            R$ {totals.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
+                          <p className="text-xs text-slate-500 font-medium mb-1">Saldo</p>
+                          <p className={`font-bold text-base sm:text-sm ${totals.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                            R$ {totals.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
-                        <p className="text-xs text-slate-500 font-medium mb-1">Despesas</p>
-                        <p className="font-bold text-red-600 text-base sm:text-sm">
-                          R$ {totals.expense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
-                      </div>
-                      <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
-                        <p className="text-xs text-slate-500 font-medium mb-1">Saldo</p>
-                        <p className={`font-bold text-base sm:text-sm ${totals.balance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                          R$ {totals.balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </p>
+                      <div className="flex flex-wrap gap-4 sm:gap-6 border-t border-slate-200/80 pt-2">
+                        <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
+                          <p className="text-xs text-slate-500 font-medium mb-1">Valor pago</p>
+                          <p className="font-bold text-emerald-700 text-base sm:text-sm">
+                            R$ {totals.paidExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
+                          <p className="text-xs text-slate-500 font-medium mb-1">Receita a receber</p>
+                          <p className="font-bold text-amber-600 text-base sm:text-sm">
+                            R$ {totals.pendingIncome.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
+                          <p className="text-xs text-slate-500 font-medium mb-1">Despesa a pagar</p>
+                          <p className="font-bold text-orange-600 text-base sm:text-sm">
+                            R$ {totals.pendingExpense.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="flex-1 sm:flex-initial text-left sm:text-right min-w-[100px]">
+                          <p className="text-xs text-slate-500 font-medium mb-1">Economizado</p>
+                          <p className="font-bold text-teal-600 text-base sm:text-sm">
+                            R$ {totals.savedAmount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -522,8 +628,10 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                     <tbody className="divide-y divide-slate-100">
                       {monthTransactions.map((t) => {
                         const isSelectedForDelete = transactionsToDelete.has(t.id);
-                        const isPaid = paidTransactions.has(t.id);
-                        const textBaseClass = isPaid ? 'line-through text-slate-400' : '';
+                        const paidInfo = paidTransactions[t.id];
+                        const isPaid = !!paidInfo;
+                        const effectivePaid = isPaid ? db.resolvePaidAmount(paidInfo, t.amount) : 0;
+                        const savedOnTx = isPaid && t.type === 'expense' ? Math.max(0, t.amount - effectivePaid) : 0;
                         return (
                           <tr key={t.id} className={`hover:bg-slate-50/50 transition-colors ${isPaid ? 'bg-slate-50' : ''}`}>
                             {deleteSelectionMode && (
@@ -549,6 +657,16 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                             <td className="px-6 py-4">
                               <div className={`font-semibold ${isPaid ? 'text-slate-400 line-through' : 'text-slate-800'}`}>{t.description}</div>
                               <div className={`text-xs md:hidden ${isPaid ? 'text-slate-300 line-through' : 'text-slate-400'}`}>{t.category}</div>
+                              {isPaid && savedOnTx > 0 && (
+                                <div className="text-xs text-teal-600 font-medium mt-0.5">
+                                  Pago R$ {effectivePaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} · economizou R$ {savedOnTx.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </div>
+                              )}
+                              {isPaid && t.type === 'income' && effectivePaid !== t.amount && (
+                                <div className="text-xs text-amber-600 font-medium mt-0.5">
+                                  Recebido R$ {effectivePaid.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </div>
+                              )}
                             </td>
                             <td className={`px-6 py-4 text-sm ${isPaid ? 'text-slate-300 line-through' : 'text-slate-600'}`}>{t.category}</td>
                             <td className={`px-6 py-4 text-sm ${isPaid ? 'text-slate-300 line-through' : 'text-slate-600'}`}>
@@ -567,7 +685,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                               {!deleteSelectionMode && (
                                 <div className="flex items-center justify-center gap-2">
                                   <button
-                                    onClick={() => togglePaid(t.id)}
+                                    onClick={() => togglePaid(t)}
                                     className={`p-2 rounded-full transition-colors ${
                                       isPaid
                                         ? 'text-emerald-700 hover:text-emerald-900 hover:bg-emerald-100'
@@ -1019,6 +1137,80 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {payModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100 bg-emerald-50">
+              <h3 className="text-xl font-bold text-slate-800">
+                {payModal.transaction.type === 'income' ? 'Confirmar recebimento' : 'Confirmar pagamento'}
+              </h3>
+              <p className="text-sm text-slate-600 mt-1">{payModal.transaction.description}</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-slate-500">Valor original</span>
+                <span className="font-bold text-slate-800">
+                  R$ {payModal.transaction.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
+                  {payModal.transaction.type === 'income' ? 'Valor recebido (R$)' : 'Valor pago (R$)'}
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  autoFocus
+                  value={payModal.paidAmountInput}
+                  onChange={(e) =>
+                    setPayModal(prev =>
+                      prev ? { ...prev, paidAmountInput: e.target.value } : prev
+                    )
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') confirmPayModal();
+                  }}
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+                <p className="text-xs text-slate-500 mt-2">
+                  Se pagar antecipado com desconto, informe o valor efetivamente pago. A diferença entra em economizado.
+                </p>
+              </div>
+              {(() => {
+                const raw = payModal.paidAmountInput.replace(',', '.');
+                const paid = parseFloat(raw);
+                const saved =
+                  Number.isFinite(paid) && payModal.transaction.type === 'expense'
+                    ? Math.max(0, payModal.transaction.amount - paid)
+                    : 0;
+                return saved > 0 ? (
+                  <div className="rounded-xl bg-teal-50 border border-teal-100 px-4 py-3 text-sm text-teal-800 font-semibold">
+                    Economia neste pagamento: R$ {saved.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  </div>
+                ) : null;
+              })()}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setPayModal(null)}
+                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmPayModal}
+                  className="flex-1 py-3 bg-emerald-600 text-white font-bold hover:bg-emerald-700 rounded-xl"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
