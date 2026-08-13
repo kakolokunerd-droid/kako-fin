@@ -20,6 +20,8 @@ interface SavingsChartProps {
   className?: string;
 }
 
+type BucketMode = 'month' | 'quarter' | 'year';
+
 const PERIOD_OPTIONS: { id: SavingsPeriod; label: string }[] = [
   { id: 'current_month', label: 'Mês atual' },
   { id: 'quarter', label: 'Trimestre' },
@@ -35,85 +37,104 @@ const MONTH_NAMES = [
   'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez',
 ];
 
-function getPeriodStart(period: SavingsPeriod, now: Date): Date {
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  switch (period) {
-    case 'current_month':
-      return start;
-    case 'quarter': {
-      const q = Math.floor(now.getMonth() / 3) * 3;
-      return new Date(now.getFullYear(), q, 1);
-    }
-    case '3m':
-      start.setMonth(start.getMonth() - 2);
-      return start;
-    case '6m':
-      start.setMonth(start.getMonth() - 5);
-      return start;
-    case '12m':
-      start.setMonth(start.getMonth() - 11);
-      return start;
-    case '2y':
-      start.setFullYear(start.getFullYear() - 2);
-      return start;
-    case '5y':
-      start.setFullYear(start.getFullYear() - 5);
-      return start;
-    default:
-      return start;
-  }
+function getBucketMode(period: SavingsPeriod): BucketMode {
+  // Períodos longos agregam para o eixo ficar legível
+  if (period === '5y') return 'year';
+  if (period === '2y' || period === 'quarter') return 'quarter';
+  return 'month';
 }
 
-function buildBuckets(period: SavingsPeriod, now: Date): { key: string; label: string; year: number; month?: number; quarter?: number }[] {
-  const buckets: { key: string; label: string; year: number; month?: number; quarter?: number }[] = [];
+function shortYear(year: number): string {
+  return String(year).slice(-2);
+}
 
-  if (period === 'quarter') {
-    // Últimos 4 trimestres (incluindo o atual)
-    for (let i = 3; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i * 3, 1);
-      const q = Math.floor(d.getMonth() / 3) + 1;
-      buckets.push({
-        key: `${d.getFullYear()}-Q${q}`,
-        label: `T${q}/${d.getFullYear()}`,
-        year: d.getFullYear(),
-        quarter: q,
-      });
-    }
-    // Deduplicate while preserving order
-    const seen = new Set<string>();
-    return buckets.filter((b) => {
-      if (seen.has(b.key)) return false;
-      seen.add(b.key);
-      return true;
-    });
-  }
+function monthKey(year: number, month: number): string {
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+function quarterKey(year: number, quarter: number): string {
+  return `${year}-Q${quarter}`;
+}
+
+function yearKey(year: number): string {
+  return `${year}`;
+}
+
+function buildBuckets(
+  period: SavingsPeriod,
+  now: Date
+): { key: string; label: string; fullLabel: string }[] {
+  const mode = getBucketMode(period);
+  const buckets: { key: string; label: string; fullLabel: string }[] = [];
+  const seen = new Set<string>();
+
+  const push = (key: string, label: string, fullLabel: string) => {
+    if (seen.has(key)) return;
+    seen.add(key);
+    buckets.push({ key, label, fullLabel });
+  };
 
   if (period === 'current_month') {
-    return [{
-      key: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
-      label: `${MONTH_NAMES[now.getMonth()]}/${now.getFullYear()}`,
-      year: now.getFullYear(),
-      month: now.getMonth() + 1,
-    }];
+    const m = now.getMonth() + 1;
+    const y = now.getFullYear();
+    push(
+      monthKey(y, m),
+      `${MONTH_NAMES[m - 1]}/${shortYear(y)}`,
+      `${MONTH_NAMES[m - 1]}/${y}`
+    );
+    return buckets;
   }
 
-  const start = getPeriodStart(period, now);
-  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth(), 1);
+  if (mode === 'year') {
+    // Últimos 5 anos + ano atual
+    for (let i = 5; i >= 0; i--) {
+      const y = now.getFullYear() - i;
+      push(yearKey(y), String(y), `Ano ${y}`);
+    }
+    return buckets;
+  }
 
-  while (cursor <= end) {
-    const month = cursor.getMonth() + 1;
-    const year = cursor.getFullYear();
-    buckets.push({
-      key: `${year}-${String(month).padStart(2, '0')}`,
-      label: `${MONTH_NAMES[month - 1]}/${year}`,
-      year,
-      month,
-    });
-    cursor.setMonth(cursor.getMonth() + 1);
+  if (mode === 'quarter') {
+    // 2 anos ≈ 8 trimestres; "Trimestre" ≈ 4
+    const count = period === '2y' ? 8 : 4;
+    for (let i = count - 1; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i * 3, 1);
+      const q = Math.floor(d.getMonth() / 3) + 1;
+      const y = d.getFullYear();
+      push(quarterKey(y, q), `T${q}/${shortYear(y)}`, `Trimestre ${q}/${y}`);
+    }
+    return buckets;
+  }
+
+  // Mensal: 3 / 6 / 12 meses
+  const monthsBack =
+    period === '3m' ? 2 : period === '6m' ? 5 : 11; // 12m padrão
+
+  for (let i = monthsBack; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const m = d.getMonth() + 1;
+    const y = d.getFullYear();
+    push(
+      monthKey(y, m),
+      `${MONTH_NAMES[m - 1]}/${shortYear(y)}`,
+      `${MONTH_NAMES[m - 1]}/${y}`
+    );
   }
 
   return buckets;
+}
+
+function savingsBucketKey(
+  mode: BucketMode,
+  year: number,
+  month: number
+): string {
+  if (mode === 'year') return yearKey(year);
+  if (mode === 'quarter') {
+    const q = Math.floor((month - 1) / 3) + 1;
+    return quarterKey(year, q);
+  }
+  return monthKey(year, month);
 }
 
 const SavingsChart: React.FC<SavingsChartProps> = ({
@@ -130,19 +151,26 @@ const SavingsChart: React.FC<SavingsChartProps> = ({
     if (paidMapProp) return;
     if (!userEmail) return;
     let mounted = true;
-    db.getPaidTransactionsMap(userEmail).then((map) => {
-      if (mounted) setInternalPaidMap(map);
-    }).catch(() => {});
-    return () => { mounted = false; };
+    db.getPaidTransactionsMap(userEmail)
+      .then((map) => {
+        if (mounted) setInternalPaidMap(map);
+      })
+      .catch(() => {});
+    return () => {
+      mounted = false;
+    };
   }, [userEmail, paidMapProp]);
 
   const paidMap = paidMapProp || internalPaidMap;
+  const mode = getBucketMode(period);
 
   const chartData = useMemo(() => {
     const now = new Date();
     const buckets = buildBuckets(period, now);
     const savingsByKey: Record<string, number> = {};
-    buckets.forEach((b) => { savingsByKey[b.key] = 0; });
+    buckets.forEach((b) => {
+      savingsByKey[b.key] = 0;
+    });
 
     for (const t of transactions) {
       if (t.type !== 'expense') continue;
@@ -156,32 +184,42 @@ const SavingsChart: React.FC<SavingsChartProps> = ({
       const [yStr, mStr] = t.date.split('-');
       const year = parseInt(yStr, 10);
       const month = parseInt(mStr, 10);
-
-      if (period === 'quarter') {
-        const q = Math.floor((month - 1) / 3) + 1;
-        const key = `${year}-Q${q}`;
-        if (key in savingsByKey) savingsByKey[key] += saved;
-      } else {
-        const key = `${year}-${String(month).padStart(2, '0')}`;
-        if (key in savingsByKey) savingsByKey[key] += saved;
+      const key = savingsBucketKey(mode, year, month);
+      if (key in savingsByKey) {
+        savingsByKey[key] += saved;
       }
     }
 
     return buckets.map((b) => ({
       name: b.label,
+      fullLabel: b.fullLabel,
       economia: Number(savingsByKey[b.key].toFixed(2)),
     }));
-  }, [transactions, paidMap, period]);
+  }, [transactions, paidMap, period, mode]);
 
   const totalSaved = chartData.reduce((sum, d) => sum + d.economia, 0);
 
+  const oblique = chartData.length > 6;
+  const xAxisHeight = oblique ? 56 : 32;
+  const granularityHint =
+    mode === 'year'
+      ? 'Agrupado por ano'
+      : mode === 'quarter'
+        ? 'Agrupado por trimestre'
+        : 'Agrupado por mês';
+
   return (
-    <div className={`bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm ${className}`}>
+    <div
+      className={`bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm ${className}`}
+    >
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <h4 className="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
-          <PiggyBank className="text-emerald-600" size={18} />
-          {title}
-        </h4>
+        <div>
+          <h4 className="font-bold text-slate-800 text-sm md:text-base flex items-center gap-2">
+            <PiggyBank className="text-emerald-600" size={18} />
+            {title}
+          </h4>
+          <p className="text-xs text-slate-500 mt-1">{granularityHint}</p>
+        </div>
         <p className="text-sm font-semibold text-emerald-700">
           Total: R$ {totalSaved.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
         </p>
@@ -204,41 +242,55 @@ const SavingsChart: React.FC<SavingsChartProps> = ({
         ))}
       </div>
 
-      <div className="h-64 md:h-72">
+      <div className="h-64 md:h-80">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={chartData}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+          <BarChart
+            data={chartData}
+            margin={{ top: 8, right: 8, left: 0, bottom: oblique ? 8 : 0 }}
+          >
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#33415533" />
             <XAxis
               dataKey="name"
               axisLine={false}
               tickLine={false}
-              tick={{ fontSize: 11, fill: '#94a3b8' }}
-              interval={period === '5y' || period === '2y' ? 1 : 0}
-              angle={period === '5y' || period === '2y' ? -35 : 0}
-              textAnchor={period === '5y' || period === '2y' ? 'end' : 'middle'}
-              height={period === '5y' || period === '2y' ? 60 : 30}
+              interval={0}
+              angle={oblique ? -35 : 0}
+              textAnchor={oblique ? 'end' : 'middle'}
+              height={xAxisHeight}
+              tick={{ fontSize: chartData.length > 10 ? 10 : 12, fill: '#94a3b8' }}
+              minTickGap={8}
             />
             <YAxis
               axisLine={false}
               tickLine={false}
+              width={40}
               tick={{ fontSize: 12, fill: '#94a3b8' }}
               tickFormatter={(value: number) =>
                 value.toLocaleString('pt-BR', { maximumFractionDigits: 0 })
               }
             />
             <Tooltip
-              cursor={{ fill: '#f8fafc' }}
+              cursor={{ fill: 'rgba(148, 163, 184, 0.12)' }}
               formatter={(value: number) => [
-                `R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+                `R$ ${Number(value).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
                 'Economia',
               ]}
+              labelFormatter={(_label, payload) =>
+                payload?.[0]?.payload?.fullLabel || String(_label)
+              }
               contentStyle={{
                 borderRadius: '12px',
                 border: 'none',
-                boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
               }}
             />
-            <Bar dataKey="economia" fill="#10b981" radius={[4, 4, 0, 0]} name="Economia" />
+            <Bar
+              dataKey="economia"
+              fill="#10b981"
+              radius={[4, 4, 0, 0]}
+              name="Economia"
+              maxBarSize={48}
+            />
           </BarChart>
         </ResponsiveContainer>
       </div>
