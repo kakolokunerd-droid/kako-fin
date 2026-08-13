@@ -2,6 +2,15 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import { initTheme, applyTheme, getStoredTheme } from './services/theme';
+
+// Tema: aplica preferência salva / sistema (iPhone dark mode incluso)
+initTheme();
+window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (getStoredTheme() === 'system') {
+    applyTheme('system');
+  }
+});
 
 // Registrar Service Worker para PWA
 if ('serviceWorker' in navigator) {
@@ -10,12 +19,15 @@ if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
       .then((registration) => {
         console.log('✅ Service Worker registrado com sucesso:', registration.scope);
-        
+
+        // Forçar checagem de atualização logo após o registro
+        registration.update();
+
         // Verificar atualizações a cada hora
         setInterval(() => {
           registration.update();
         }, 3600000);
-        
+
         // Verificar atualizações quando a página ganha foco
         window.addEventListener('focus', () => {
           registration.update();

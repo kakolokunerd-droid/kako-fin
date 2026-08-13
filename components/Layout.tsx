@@ -35,7 +35,7 @@ const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [showSupportBanner, setShowSupportBanner] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const APP_VERSION = "1.0.3"; // Versão do app
+  const APP_VERSION = "1.0.4"; // Versão do app
   const lastLoadTimeRef = useRef<number>(0);
   const isLoadingRef = useRef<boolean>(false);
 
@@ -172,7 +172,7 @@ const Layout: React.FC<LayoutProps> = ({
   };
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-900">
       {/* Sidebar */}
       <aside className="w-64 bg-indigo-900 text-white flex flex-col hidden md:flex">
         <div className="p-6 flex items-center gap-2">
@@ -216,7 +216,7 @@ const Layout: React.FC<LayoutProps> = ({
       </aside>
 
       {/* Main Content */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-hidden bg-slate-50 dark:bg-slate-900">
         {/* Support Banner - Desktop Only */}
         {showSupportBanner && (
           <div className="hidden md:block bg-gradient-to-r from-indigo-600 to-violet-700 text-white px-8 py-3 border-b border-indigo-500">
@@ -251,9 +251,9 @@ const Layout: React.FC<LayoutProps> = ({
           </div>
         )}
 
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
+        <header className="h-16 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between px-8">
           <div className="flex items-center gap-4">
-            <h2 className="text-lg font-semibold text-slate-800">
+            <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
               {menuItems.find((i) => i.id === activeTab)?.label}
             </h2>
             <span className="text-xs text-slate-400 font-medium">
@@ -263,14 +263,14 @@ const Layout: React.FC<LayoutProps> = ({
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end hidden sm:flex">
               <span className="text-xs text-slate-400">Olá,</span>
-              <span className="text-sm font-semibold text-indigo-600">
+              <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
                 {user.name}
               </span>
             </div>
             <div className="flex flex-col items-center gap-1">
               <button
                 onClick={() => setActiveTab("profile")}
-                className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold border border-indigo-200 overflow-hidden hover:ring-2 hover:ring-indigo-500 transition-all"
+                className="w-10 h-10 rounded-full bg-indigo-100 dark:bg-indigo-900 flex items-center justify-center text-indigo-700 dark:text-indigo-200 font-bold border border-indigo-200 dark:border-indigo-700 overflow-hidden hover:ring-2 hover:ring-indigo-500 transition-all"
               >
                 {user.avatar ? (
                   <img
@@ -282,7 +282,7 @@ const Layout: React.FC<LayoutProps> = ({
                   user.name.charAt(0).toUpperCase()
                 )}
               </button>
-              <span className="text-xs text-slate-500 font-medium sm:hidden">
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium sm:hidden">
                 {user.name}
               </span>
             </div>
@@ -292,9 +292,9 @@ const Layout: React.FC<LayoutProps> = ({
         <div className="flex-1 overflow-y-auto p-4 md:p-8">{children}</div>
 
         {/* Footer */}
-        <footer className="hidden md:block bg-white border-t border-slate-200 px-8 py-4">
+        <footer className="hidden md:block bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 px-8 py-4">
           <div className="flex items-center justify-center">
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
               © {new Date().getFullYear()} Kako Solutions. Todos os direitos
               reservados.
             </p>
@@ -302,14 +302,16 @@ const Layout: React.FC<LayoutProps> = ({
         </footer>
 
         {/* Mobile Nav */}
-        <nav className="md:hidden bg-white border-t border-slate-200 overflow-x-auto">
+        <nav className="md:hidden bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 overflow-x-auto">
           <div className="flex flex-nowrap px-2 py-2 min-w-max">
             {menuItems.map((item) => (
               <button
                 key={item.id}
                 onClick={() => setActiveTab(item.id)}
                 className={`min-w-[70px] p-2 rounded-lg flex flex-col items-center gap-1 flex-shrink-0 relative ${
-                  activeTab === item.id ? "text-indigo-600" : "text-slate-400"
+                  activeTab === item.id
+                    ? "text-indigo-600 dark:text-indigo-400"
+                    : "text-slate-400"
                 }`}
               >
                 <div className="relative">

@@ -1,9 +1,10 @@
 
 import React, { useState, useRef } from 'react';
-import { User, Mail, Shield, Camera, Save, Lock, Eye, EyeOff, CheckCircle2, LogOut, Share2, Heart, Copy, UserCog, Crown, Zap, Star, ArrowRight } from 'lucide-react';
+import { User, Mail, Shield, Camera, Save, Lock, Eye, EyeOff, CheckCircle2, LogOut, Share2, Heart, Copy, UserCog, Crown, Zap, Star, ArrowRight, Moon, Sun, Monitor } from 'lucide-react';
 import { UserProfile, UserRole, SubscriptionPlan } from '../types';
 import { useSubscription } from '../hooks/useSubscription';
 import { AuthState } from '../types';
+import { ThemePreference, getStoredTheme, setThemePreference } from '../services/theme';
 
 interface ProfileProps {
   user: UserProfile;
@@ -30,6 +31,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
   const [passError, setPassError] = useState('');
   const [passSuccess, setPassSuccess] = useState(false);
   const [showSecurityModal, setShowSecurityModal] = useState(false);
+  const [themePreference, setThemePreferenceState] = useState<ThemePreference>(() => getStoredTheme());
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -287,6 +289,41 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
           </div>
         </div>
       )}
+
+      {/* Aparência / Tema */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+        <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4">
+          <Moon size={20} className="text-indigo-600" />
+          Aparência
+        </h4>
+        <p className="text-sm text-slate-500 mb-4">
+          No iPhone, use &quot;Sistema&quot; para seguir o modo escuro do aparelho. No PC você também pode forçar claro ou escuro.
+        </p>
+        <div className="grid grid-cols-3 gap-3">
+          {([
+            { id: 'light' as ThemePreference, label: 'Claro', icon: Sun },
+            { id: 'dark' as ThemePreference, label: 'Escuro', icon: Moon },
+            { id: 'system' as ThemePreference, label: 'Sistema', icon: Monitor },
+          ]).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                setThemePreference(id);
+                setThemePreferenceState(id);
+              }}
+              className={`flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all ${
+                themePreference === id
+                  ? 'border-indigo-500 bg-indigo-50 text-indigo-700 ring-2 ring-indigo-200'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:border-indigo-300'
+              }`}
+            >
+              <Icon size={22} />
+              <span className="text-sm font-semibold">{label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <form onSubmit={handleGeneralUpdate} className="bg-white p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
