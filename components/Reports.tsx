@@ -15,20 +15,22 @@ import {
   Line,
   Legend
 } from 'recharts';
-import { Transaction, Goal, AuthState } from '../types';
-import { TrendingUp, TrendingDown, Target, Calendar, Zap, BarChart3 } from 'lucide-react';
+import { Transaction, Goal, AuthState, CategoryBudget } from '../types';
+import { TrendingUp, TrendingDown, Target, Calendar, Zap, BarChart3, PiggyBank } from 'lucide-react';
 import SubscriptionBlock from './SubscriptionBlock';
 import SavingsChart from './SavingsChart';
+import BudgetCharts from './BudgetCharts';
 
 interface ReportsProps {
   transactions: Transaction[];
   goals: Goal[];
   auth: AuthState;
+  budgets?: CategoryBudget[];
 }
 
-type ReportType = 'transactions' | 'goals';
+type ReportType = 'transactions' | 'goals' | 'budgets';
 
-const Reports: React.FC<ReportsProps> = ({ transactions, goals, auth }) => {
+const Reports: React.FC<ReportsProps> = ({ transactions, goals, auth, budgets = [] }) => {
   const [activeTab, setActiveTab] = useState<ReportType>('transactions');
 
   const COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f97316', '#eab308', '#22c55e', '#06b6d4'];
@@ -263,35 +265,65 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals, auth }) => {
   const completionProjection = getCompletionProjection();
 
   return (
-    <SubscriptionBlock feature="reports" auth={auth}>
-      <div className="space-y-6">
-        {/* Tab Selector */}
-        <div className="bg-white p-2 rounded-2xl border border-slate-200 inline-flex gap-2">
-        <button
-          onClick={() => setActiveTab('transactions')}
-          className={`px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 ${
-            activeTab === 'transactions'
-              ? 'bg-indigo-600 text-white shadow-lg'
-              : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <BarChart3 size={18} />
-          Transações
-        </button>
-        <button
-          onClick={() => setActiveTab('goals')}
-          className={`px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 ${
-            activeTab === 'goals'
-              ? 'bg-indigo-600 text-white shadow-lg'
-              : 'text-slate-600 hover:bg-slate-50'
-          }`}
-        >
-          <Target size={18} />
-          Metas
-        </button>
-      </div>
+    <div className="space-y-6">
+      {/* Relatório de orçamento liberado para todos — ajuda a manter o foco */}
+      <BudgetCharts
+        budgets={budgets}
+        transactions={transactions}
+        variant="reports"
+      />
 
-      {activeTab === 'transactions' ? (
+      <SubscriptionBlock feature="reports" auth={auth}>
+        <div className="space-y-6">
+          <div className="bg-white p-2 rounded-2xl border border-slate-200 inline-flex flex-wrap gap-2">
+            <button
+              onClick={() => setActiveTab('budgets')}
+              className={`px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'budgets'
+                  ? 'bg-indigo-600 text-white shadow-lg'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <PiggyBank size={18} />
+              Orçamentos
+            </button>
+            <button
+              onClick={() => setActiveTab('transactions')}
+              className={`px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'transactions'
+                  ? 'bg-indigo-600 text-white shadow-lg'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <BarChart3 size={18} />
+              Transações
+            </button>
+            <button
+              onClick={() => setActiveTab('goals')}
+              className={`px-6 py-2.5 rounded-xl font-bold transition-all flex items-center gap-2 ${
+                activeTab === 'goals'
+                  ? 'bg-indigo-600 text-white shadow-lg'
+                  : 'text-slate-600 hover:bg-slate-50'
+              }`}
+            >
+              <Target size={18} />
+              Metas
+            </button>
+          </div>
+
+          {activeTab === 'budgets' && (
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+              <h4 className="font-bold text-slate-800">Como usar o relatório de orçamento</h4>
+              <ul className="text-sm text-slate-600 space-y-2 list-disc pl-5">
+                <li>Alterne entre <strong>Mensal</strong> e <strong>Anual</strong> no gráfico acima.</li>
+                <li>Barras vermelhas/âmbar mostram categorias no limite ou estouradas.</li>
+                <li>A tendência de 6 meses ajuda a ver se o gasto está acelerando.</li>
+                <li>Ajuste limites em Orçamento e volte aqui para acompanhar.</li>
+              </ul>
+            </div>
+          )}
+
+          {activeTab === 'transactions' && (
         <div className="space-y-6">
           {/* Report 1: Gastos por Categoria */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
@@ -474,7 +506,9 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals, auth }) => {
             </ResponsiveContainer>
           </div>
         </div>
-      ) : (
+      )}
+
+      {activeTab === 'goals' && (
         <div className="space-y-6">
           {/* Report 1: Progresso Geral das Metas */}
           <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm h-96">
@@ -640,8 +674,9 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals, auth }) => {
           </div>
         </div>
       )}
-      </div>
-    </SubscriptionBlock>
+        </div>
+      </SubscriptionBlock>
+    </div>
   );
 };
 

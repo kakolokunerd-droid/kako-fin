@@ -1,8 +1,9 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Plus, Search, Filter, Trash2, Edit2, Calendar, ChevronDown, ChevronUp, Copy, CheckCircle2 } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Edit2, Calendar, ChevronDown, ChevronUp, Copy, CheckCircle2, Download } from 'lucide-react';
 import { Transaction, TransactionType, Category, PaidTransactionsMap } from '../types';
 import { db } from '../services/db';
+import { exportTransactionsCsv, downloadTextFile } from '../services/financialHealth';
 
 interface TransactionsProps {
   transactions: Transaction[];
@@ -235,9 +236,9 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
   // Organizar transações por mês
   const transactionsByMonth = useMemo(() => {
     // Primeiro, remover duplicatas por ID antes de agrupar
-    const uniqueTransactions = Array.from(
-      new Map(transactions.map(t => [t.id, t])).values()
-    );
+    const byId = new Map<string, Transaction>();
+    for (const t of transactions) byId.set(t.id, t);
+    const uniqueTransactions = Array.from(byId.values());
     
     if (uniqueTransactions.length !== transactions.length) {
       console.warn(`⚠️ Removidas ${transactions.length - uniqueTransactions.length} transações duplicadas na exibição`);
@@ -396,6 +397,23 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
             </>
           ) : (
             <>
+              <button
+                onClick={() => {
+                  if (transactions.length === 0) {
+                    showToast?.('Não há transações para exportar.', 'info');
+                    return;
+                  }
+                  const csv = exportTransactionsCsv(transactions);
+                  const stamp = new Date().toISOString().slice(0, 10);
+                  downloadTextFile(`kako-fin-transacoes-${stamp}.csv`, csv);
+                  showToast?.('CSV exportado com sucesso!', 'success');
+                }}
+                className="flex items-center gap-2 bg-white text-slate-700 border border-slate-200 px-4 py-2.5 rounded-xl hover:bg-slate-50 transition-all font-semibold"
+                title="Exportar CSV"
+              >
+                <Download size={18} />
+                <span className="hidden sm:inline">CSV</span>
+              </button>
               <button
                 onClick={() => setDeleteSelectionMode(true)}
                 className="flex items-center gap-2 bg-red-600 text-white px-6 py-2.5 rounded-xl hover:bg-red-700 transition-all font-semibold shadow-lg shadow-red-100"

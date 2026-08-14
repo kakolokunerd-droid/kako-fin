@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -8,12 +8,28 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  HeartPulse,
+  CalendarClock,
 } from "lucide-react";
-import { Transaction, Goal, AuthState } from "../types";
+import {
+  Transaction,
+  Goal,
+  AuthState,
+  CategoryBudget,
+  InstallmentPlan,
+} from "../types";
 import { getFinancialAdvice } from "../services/aiService";
 import { useSubscription } from "../hooks/useSubscription";
 import SubscriptionBlock from "./SubscriptionBlock";
 import SavingsChart from "./SavingsChart";
+import BudgetCharts from "./BudgetCharts";
+import {
+  calcFinancialHealth,
+  projectCashFlow,
+  getAllPendingInstallments,
+  monthlyInstallmentBurden,
+  currentYearMonth,
+} from "../services/financialHealth";
 import {
   LineChart,
   Line,
@@ -34,15 +50,61 @@ interface DashboardProps {
   goals: Goal[];
   user?: { lastContributionDate?: string; email?: string };
   auth?: AuthState;
+  budgets?: CategoryBudget[];
+  installments?: InstallmentPlan[];
+  onNavigate?: (tab: string) => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user, auth }) => {
+const Dashboard: React.FC<DashboardProps> = ({
+  transactions,
+  goals,
+  user,
+  auth,
+  budgets = [],
+  installments = [],
+  onNavigate,
+}) => {
   const [advice, setAdvice] = useState<string>("");
   const [loadingAdvice, setLoadingAdvice] = useState<boolean>(true);
   const [isInsightsExpanded, setIsInsightsExpanded] = useState<boolean>(false);
   const [shouldShowInsights, setShouldShowInsights] = useState<boolean>(false);
   
   const subscription = auth ? useSubscription(auth) : null;
+
+  const goalsProgressAvg = useMemo(() => {
+    if (!goals.length) return 0;
+    const sum = goals.reduce((acc, g) => {
+      if (g.targetAmount <= 0) return acc;
+      return acc + Math.min(100, (g.currentAmount / g.targetAmount) * 100);
+    }, 0);
+    return sum / goals.length;
+  }, [goals]);
+
+  const health = useMemo(
+    () =>
+      calcFinancialHealth(
+        transactions,
+        budgets,
+        installments,
+        goalsProgressAvg
+      ),
+    [transactions, budgets, installments, goalsProgressAvg]
+  );
+
+  const cashFlow = useMemo(
+    () => projectCashFlow(transactions, installments, 90),
+    [transactions, installments]
+  );
+
+  const upcomingInstallments = useMemo(
+    () => getAllPendingInstallments(installments, { limit: 5 }),
+    [installments]
+  );
+
+  const installmentBurden = useMemo(
+    () => monthlyInstallmentBurden(installments, currentYearMonth()),
+    [installments]
+  );
 
   // Função para formatar data para exibição sem problemas de timezone
   const formatDateForDisplay = (dateString: string): string => {
@@ -489,7 +551,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user, auth }
       )}
 
       {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 md:gap-4 min-w-0">
           <div className="p-2 md:p-3 bg-green-50 text-green-600 rounded-xl flex-shrink-0">
             <DollarSign size={20} className="md:w-6 md:h-6" />
@@ -525,7 +587,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user, auth }
           </div>
         </div>
 
-        <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 md:gap-4 min-w-0 sm:col-span-2 lg:col-span-1">
+        <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 md:gap-4 min-w-0">
           <div className="p-2 md:p-3 bg-orange-50 text-orange-600 rounded-xl flex-shrink-0">
             <TrendingDown size={20} className="md:w-6 md:h-6" />
           </div>
@@ -541,7 +603,196 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, goals, user, auth }
             </h3>
           </div>
         </div>
+
+        <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm flex items-center gap-3 md:gap-4 min-w-0">
+          <div
+            className={`p-2 md:p-3 rounded-xl flex-shrink-0 ${
+              health.score >= 60
+                ? "bg-emerald-50 text-emerald-600"
+                : health.score >= 40
+                  ? "bg-amber-50 text-amber-600"
+                  : "bg-red-50 text-red-600"
+            }`}
+          >
+            <HeartPulse size={20} className="md:w-6 md:h-6" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs md:text-sm text-slate-500 font-medium truncate">
+              Saúde financeira
+            </p>
+            <h3 className="text-lg md:text-xl lg:text-2xl font-bold text-slate-800 truncate">
+              {health.score}
+              <span className="text-sm font-semibold text-slate-500 ml-1">
+                {health.label}
+              </span>
+            </h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Poupança: {health.savingsRate.toFixed(0)}% da renda
+            </p>
+          </div>
+        </div>
       </div>
+
+      {/* Dicas práticas + próximas contas */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 md:gap-6">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+            <HeartPulse className="text-indigo-600" size={18} />
+            Como melhorar agora
+          </h4>
+          <ul className="space-y-2">
+            {health.tips.map((tip, i) => (
+              <li
+                key={i}
+                className="text-sm text-slate-600 bg-slate-50 rounded-xl px-3 py-2 border border-slate-100"
+              >
+                {tip}
+              </li>
+            ))}
+          </ul>
+          <div className="flex flex-wrap gap-2 mt-4">
+            <button
+              type="button"
+              onClick={() => onNavigate?.("budgets")}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full bg-indigo-50 text-indigo-700 hover:bg-indigo-100"
+            >
+              Ver orçamentos
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.("bills")}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full bg-teal-50 text-teal-700 hover:bg-teal-100"
+            >
+              Contas longas
+            </button>
+            <button
+              type="button"
+              onClick={() => onNavigate?.("goals")}
+              className="text-xs font-semibold px-3 py-1.5 rounded-full bg-violet-50 text-violet-700 hover:bg-violet-100"
+            >
+              Ver metas
+            </button>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+            <CalendarClock className="text-teal-600" size={18} />
+            Próximas parcelas
+            {installmentBurden > 0 && (
+              <span className="ml-auto text-xs font-semibold text-slate-500">
+                Mês: R${" "}
+                {installmentBurden.toLocaleString("pt-BR", {
+                  minimumFractionDigits: 2,
+                })}
+              </span>
+            )}
+          </h4>
+          {upcomingInstallments.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              Nenhuma parcela pendente. Cadastre financiamentos em{" "}
+              <button
+                type="button"
+                className="text-teal-600 font-semibold underline"
+                onClick={() => onNavigate?.("bills")}
+              >
+                Contas longas
+              </button>
+              .
+            </p>
+          ) : (
+            <ul className="space-y-2">
+              {upcomingInstallments.map((occ) => (
+                <li
+                  key={`${occ.planId}-${occ.number}`}
+                  className="flex items-center justify-between text-sm gap-2"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800 truncate">
+                      {occ.planName}
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      {occ.number}ª · {occ.dueDate.split("-").reverse().join("/")}
+                      {occ.overdue ? " · atrasada" : ""}
+                    </p>
+                  </div>
+                  <span className="font-bold text-red-600 shrink-0">
+                    R${" "}
+                    {occ.amount.toLocaleString("pt-BR", {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {/* Previsão de caixa 90 dias */}
+      <div className="bg-white p-4 md:p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h4 className="font-bold text-slate-800 mb-1 text-sm md:text-base flex items-center gap-2">
+          <TrendingUp className="text-indigo-600" size={18} />
+          Previsão de caixa (90 dias)
+        </h4>
+        <p className="text-xs text-slate-500 mb-4">
+          Projeção com base no saldo atual, lançamentos futuros e parcelas ainda
+          pendentes.
+        </p>
+        <div className="h-56 md:h-64">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={cashFlow}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <XAxis
+                dataKey="label"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 10, fill: "#94a3b8" }}
+                interval="preserveStartEnd"
+                minTickGap={24}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 11, fill: "#94a3b8" }}
+                tickFormatter={(v: number) =>
+                  v.toLocaleString("pt-BR", { maximumFractionDigits: 0 })
+                }
+              />
+              <Tooltip
+                formatter={(value: number) =>
+                  `R$ ${Number(value).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
+                }
+                labelFormatter={(_, payload) =>
+                  payload?.[0]?.payload?.date
+                    ? `Data: ${payload[0].payload.date}`
+                    : ""
+                }
+                contentStyle={{
+                  borderRadius: "12px",
+                  border: "none",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.1)",
+                }}
+              />
+              <Line
+                type="monotone"
+                dataKey="projectedBalance"
+                stroke="#6366f1"
+                strokeWidth={3}
+                dot={false}
+                name="Saldo projetado"
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      <BudgetCharts
+        budgets={budgets}
+        transactions={transactions}
+        onNavigate={onNavigate}
+        variant="dashboard"
+      />
 
       {/* AI Suggestion Box - Apenas para quem contribuiu - Desktop */}
       {shouldShowInsights && (

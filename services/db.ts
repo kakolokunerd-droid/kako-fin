@@ -1,4 +1,4 @@
-import { Transaction, Goal, UserProfile, Notification, PaidTransactionsMap, PaidTransactionInfo } from "../types";
+import { Transaction, Goal, UserProfile, Notification, PaidTransactionsMap, PaidTransactionInfo, CategoryBudget, InstallmentPlan } from "../types";
 import { supabase } from "./supabaseClient";
 
 import { hashPassword, verifyPassword } from './passwordService';
@@ -1174,6 +1174,164 @@ class CloudDatabase {
       }
     } catch (error) {
       console.warn('⚠️ Erro ao atualizar status de pagamento no Supabase:', error);
+    }
+  }
+
+  // ========== ORÇAMENTOS ==========
+
+  private getBudgetsKey(userId: string) {
+    return `fintrack_${userId}_budgets`;
+  }
+
+  async getBudgets(userId: string): Promise<CategoryBudget[]> {
+      const normalize = (b: any): CategoryBudget => ({
+        id: b.id,
+        category: b.category,
+        monthlyLimit: parseFloat(b.monthlyLimit ?? b.monthly_limit ?? 0),
+        period: b.period === 'yearly' ? 'yearly' : 'monthly',
+      });
+
+      const fromLocal = (): CategoryBudget[] => {
+        try {
+          const raw = localStorage.getItem(this.getBudgetsKey(userId));
+          return raw ? (JSON.parse(raw) as any[]).map(normalize) : [];
+        } catch {
+          return [];
+        }
+      };
+
+      if (!this.isSupabaseConfigured()) return fromLocal();
+
+      try {
+        const { data, error } = await supabase
+          .from('budgets')
+          .select('*')
+          .eq('user_id', userId);
+
+        if (error) {
+          console.warn('⚠️ Erro ao buscar orçamentos. Usando localStorage.', error);
+          return fromLocal();
+        }
+
+        const budgets = (data || []).map(normalize);
+        localStorage.setItem(this.getBudgetsKey(userId), JSON.stringify(budgets));
+        return budgets;
+      } catch {
+        return fromLocal();
+      }
+    }
+
+    async saveBudgets(userId: string, budgets: CategoryBudget[]): Promise<void> {
+      const normalized = budgets.map((b) => ({
+        ...b,
+        period: b.period === 'yearly' ? 'yearly' as const : 'monthly' as const,
+      }));
+      localStorage.setItem(this.getBudgetsKey(userId), JSON.stringify(normalized));
+
+      if (!this.isSupabaseConfigured()) return;
+
+      try {
+        await supabase.from('budgets').delete().eq('user_id', userId);
+        if (normalized.length === 0) return;
+
+        const { error } = await supabase.from('budgets').insert(
+          normalized.map((b) => ({
+            id: b.id,
+            user_id: userId,
+            category: b.category,
+            monthly_limit: b.monthlyLimit,
+            period: b.period,
+            updated_at: new Date().toISOString(),
+          }))
+        );
+        if (error) console.warn('⚠️ Erro ao salvar orçamentos:', error);
+      } catch (error) {
+        console.warn('⚠️ Erro ao salvar orçamentos:', error);
+      }
+    }
+
+  // ========== CONTAS LONGAS / PARCELAMENTOS ==========
+
+  private getInstallmentsKey(userId: string) {
+    return `fintrack_${userId}_installments`;
+  }
+
+  async getInstallmentPlans(userId: string): Promise<InstallmentPlan[]> {
+    const fromLocal = (): InstallmentPlan[] => {
+      try {
+        const raw = localStorage.getItem(this.getInstallmentsKey(userId));
+        return raw ? JSON.parse(raw) : [];
+      } catch {
+        return [];
+      }
+    };
+
+    if (!this.isSupabaseConfigured()) return fromLocal();
+
+    try {
+      const { data, error } = await supabase
+        .from('installment_plans')
+        .select('*')
+        .eq('user_id', userId)
+        .order('start_year_month', { ascending: true });
+
+      if (error) {
+        console.warn('⚠️ Erro ao buscar parcelamentos. Usando localStorage.', error);
+        return fromLocal();
+      }
+
+      const plans = (data || []).map((row: any) => ({
+        id: row.id,
+        name: row.name,
+        category: row.category,
+        totalAmount: parseFloat(row.total_amount),
+        installmentAmount: parseFloat(row.installment_amount),
+        totalInstallments: Number(row.total_installments),
+        startYearMonth: row.start_year_month,
+        dueDay: row.due_day,
+        paidNumbers: Array.isArray(row.paid_numbers)
+          ? row.paid_numbers.map(Number)
+          : typeof row.paid_numbers === 'string'
+            ? JSON.parse(row.paid_numbers || '[]')
+            : [],
+        notes: row.notes || undefined,
+      })) as InstallmentPlan[];
+
+      localStorage.setItem(this.getInstallmentsKey(userId), JSON.stringify(plans));
+      return plans;
+    } catch {
+      return fromLocal();
+    }
+  }
+
+  async saveInstallmentPlans(userId: string, plans: InstallmentPlan[]): Promise<void> {
+    localStorage.setItem(this.getInstallmentsKey(userId), JSON.stringify(plans));
+
+    if (!this.isSupabaseConfigured()) return;
+
+    try {
+      await supabase.from('installment_plans').delete().eq('user_id', userId);
+      if (plans.length === 0) return;
+
+      const { error } = await supabase.from('installment_plans').insert(
+        plans.map((p) => ({
+          id: p.id,
+          user_id: userId,
+          name: p.name,
+          category: p.category,
+          total_amount: p.totalAmount,
+          installment_amount: p.installmentAmount,
+          total_installments: p.totalInstallments,
+          start_year_month: p.startYearMonth,
+          due_day: p.dueDay,
+          paid_numbers: p.paidNumbers || [],
+          notes: p.notes || null,
+          updated_at: new Date().toISOString(),
+        }))
+      );
+      if (error) console.warn('⚠️ Erro ao salvar parcelamentos:', error);
+    } catch (error) {
+      console.warn('⚠️ Erro ao salvar parcelamentos:', error);
     }
   }
 }

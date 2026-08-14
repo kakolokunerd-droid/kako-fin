@@ -43,17 +43,13 @@ export function useSubscription(auth: AuthState): SubscriptionInfo {
       !user.subscriptionExpiresAt ||
       new Date(user.subscriptionExpiresAt) > new Date();
 
-    // Permissões baseadas no plano conforme tabela:
-    // Trial: Dashboard, Transações, Compras, Notificações, Perfil (SEM Metas, Insights, Relatórios)
-    // Basic: Tudo do Trial + Metas
-    // Premium: Tudo do Basic (sem mudanças)
-    // Premium Plus: Tudo do Premium + Insights + Relatórios
-    
+    // Ajudar primeiro: metas, orçamento e contas liberados para todos
+    // Relatórios e Insights IA continuam no Premium Plus
     const canAccessReports = plan === "premium_plus";
     const canAccessInsights = plan === "premium_plus";
-    const canAccessGoals = plan !== "trial"; // Basic, Premium e Premium Plus
+    const canAccessGoals = true;
     const canAccessKanban = plan === "premium_plus";
-    const canSendQuotes = plan !== "trial" && plan !== "basic"; // Premium e Premium Plus
+    const canSendQuotes = plan === "premium_plus";
 
     return {
       plan,

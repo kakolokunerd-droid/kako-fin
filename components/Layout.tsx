@@ -14,6 +14,8 @@ import {
   Settings,
   ShoppingCart,
   Bell,
+  PiggyBank,
+  CalendarRange,
 } from "lucide-react";
 import { UserProfile } from "../types";
 import { db } from "../services/db";
@@ -35,7 +37,7 @@ const Layout: React.FC<LayoutProps> = ({
 }) => {
   const [showSupportBanner, setShowSupportBanner] = useState(false);
   const [unreadNotifications, setUnreadNotifications] = useState(0);
-  const APP_VERSION = "1.0.4"; // Versão do app
+  const APP_VERSION = "1.2.1"; // Versão do app
   const lastLoadTimeRef = useRef<number>(0);
   const isLoadingRef = useRef<boolean>(false);
 
@@ -121,6 +123,8 @@ const Layout: React.FC<LayoutProps> = ({
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "transactions", label: "Transações", icon: Wallet },
+    { id: "bills", label: "Contas longas", icon: CalendarRange },
+    { id: "budgets", label: "Orçamento", icon: PiggyBank },
     { id: "shopping", label: "Compras", icon: ShoppingCart },
     { id: "goals", label: "Metas", icon: Target },
     { id: "reports", label: "Relatórios", icon: BarChart3 },

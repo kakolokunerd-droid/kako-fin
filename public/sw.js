@@ -1,5 +1,5 @@
 // Service Worker para Kako Fin PWA
-const CACHE_NAME = "kako-fin-v1.0.4";
+const CACHE_NAME = "kako-fin-v1.2.1";
 const urlsToCache = [
   "/",
   "/index.html",

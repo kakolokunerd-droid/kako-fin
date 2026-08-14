@@ -99,12 +99,12 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
 
 🎯 *O que você pode fazer:*
 • Controle de receitas e despesas
-• Metas financeiras personalizadas
-• Relatórios e gráficos detalhados
-• Insights inteligentes com IA
-• Sincronização em nuvem
+• Orçamento por categoria e contas longas (parcelamentos)
+• Metas, score de saúde financeira e previsão
+• Exportação CSV e lista de compras
+• Insights e relatórios avançados (Premium Plus)
 
-📊 Visualize seu dashboard completo e tome decisões financeiras mais inteligentes!
+📊 Organize o mês, evite surpresas e tome decisões melhores!
 
 🚀 Comece hoje mesmo a planejar seus sonhos e alcance sua liberdade financeira!
 
@@ -206,57 +206,45 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
           <div className="mt-4">
             <p className="text-sm font-semibold text-slate-700 mb-3">Funcionalidades disponíveis no seu plano:</p>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {/* Dashboard - Todos têm */}
               <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
                 <p className="font-semibold text-sm">Dashboard</p>
                 <p className="text-xs mt-1">✓ Disponível</p>
               </div>
-              {/* Transações - Todos têm */}
               <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
                 <p className="font-semibold text-sm">Transações</p>
                 <p className="text-xs mt-1">✓ Disponível</p>
               </div>
-              {/* Compras - Todos têm */}
               <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
-                <p className="font-semibold text-sm">Compras</p>
+                <p className="font-semibold text-sm">Orçamento</p>
                 <p className="text-xs mt-1">✓ Disponível</p>
               </div>
-              {/* Metas - Basic, Premium, Premium Plus */}
-              <div className={`p-3 rounded-lg border ${
-                subscription.canAccessGoals 
-                  ? 'bg-green-50 text-green-700 border-green-200' 
-                  : 'bg-slate-50 text-slate-400 border-slate-200'
-              }`}>
-                <p className="font-semibold text-sm">Metas</p>
-                <p className="text-xs mt-1">{subscription.canAccessGoals ? '✓ Disponível' : '✗ Indisponível'}</p>
+              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+                <p className="font-semibold text-sm">Contas longas</p>
+                <p className="text-xs mt-1">✓ Disponível</p>
               </div>
-              {/* Insights - Apenas Premium Plus */}
+              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+                <p className="font-semibold text-sm">Metas</p>
+                <p className="text-xs mt-1">✓ Disponível</p>
+              </div>
+              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
+                <p className="font-semibold text-sm">Compras / CSV</p>
+                <p className="text-xs mt-1">✓ Disponível</p>
+              </div>
               <div className={`p-3 rounded-lg border ${
                 subscription.canAccessInsights 
                   ? 'bg-green-50 text-green-700 border-green-200' 
                   : 'bg-slate-50 text-slate-400 border-slate-200'
               }`}>
                 <p className="font-semibold text-sm">Insights IA</p>
-                <p className="text-xs mt-1">{subscription.canAccessInsights ? '✓ Disponível' : '✗ Indisponível'}</p>
+                <p className="text-xs mt-1">{subscription.canAccessInsights ? '✓ Disponível' : '✗ Premium Plus'}</p>
               </div>
-              {/* Relatórios - Apenas Premium Plus */}
               <div className={`p-3 rounded-lg border ${
                 subscription.canAccessReports 
                   ? 'bg-green-50 text-green-700 border-green-200' 
                   : 'bg-slate-50 text-slate-400 border-slate-200'
               }`}>
                 <p className="font-semibold text-sm">Relatórios</p>
-                <p className="text-xs mt-1">{subscription.canAccessReports ? '✓ Disponível' : '✗ Indisponível'}</p>
-              </div>
-              {/* Notificações - Todos têm */}
-              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
-                <p className="font-semibold text-sm">Notificações</p>
-                <p className="text-xs mt-1">✓ Disponível</p>
-              </div>
-              {/* Perfil - Todos têm */}
-              <div className="p-3 rounded-lg bg-green-50 text-green-700 border border-green-200">
-                <p className="font-semibold text-sm">Perfil</p>
-                <p className="text-xs mt-1">✓ Disponível</p>
+                <p className="text-xs mt-1">{subscription.canAccessReports ? '✓ Disponível' : '✗ Premium Plus'}</p>
               </div>
             </div>
           </div>

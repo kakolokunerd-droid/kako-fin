@@ -11,13 +11,23 @@ import Shopping from './components/Shopping';
 import Notifications from './components/Notifications';
 import PWAInstallPrompt from './components/PWAInstallPrompt';
 import Pricing from './components/Pricing';
-import SubscriptionBlock from './components/SubscriptionBlock';
+import Budgets from './components/Budgets';
+import Installments from './components/Installments';
 import { ToastContainer, useToast } from './components/Toast';
 import { db } from './services/db';
 import { generateTemporaryPassword } from './services/passwordService';
 import { sendPasswordRecoveryEmail } from './services/emailService';
 import { startAutoCleanupScheduler } from './services/notificationCleanup';
-import { AuthState, Transaction, Goal, UserProfile, Category, ShoppingItem } from './types';
+import {
+  AuthState,
+  Transaction,
+  Goal,
+  UserProfile,
+  Category,
+  ShoppingItem,
+  CategoryBudget,
+  InstallmentPlan,
+} from './types';
 import { Wallet, LogIn, UserPlus, Loader2, Eye, EyeOff, Mail, X } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -46,6 +56,8 @@ const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
+  const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
+  const [installments, setInstallments] = useState<InstallmentPlan[]>([]);
   
   // Flag para evitar salvamento durante carregamento inicial
   const [isLoadingData, setIsLoadingData] = useState(false);
@@ -84,6 +96,8 @@ const App: React.FC = () => {
       setTransactions([]);
       setGoals([]);
       setShoppingItems([]);
+      setBudgets([]);
+      setInstallments([]);
     }
   }, [auth.isAuthenticated]);
 
@@ -139,10 +153,12 @@ const App: React.FC = () => {
     setIsLoading(true);
     setIsLoadingData(true);
     try {
-      const [tData, gData, sData] = await Promise.all([
+      const [tData, gData, sData, budgetData, installmentData] = await Promise.all([
         db.getData<Transaction>('transactions', userId),
         db.getData<Goal>('goals', userId),
-        db.getData<ShoppingItem>('shopping', userId)
+        db.getData<ShoppingItem>('shopping', userId),
+        db.getBudgets(userId),
+        db.getInstallmentPlans(userId),
       ]);
       
       // Remover duplicatas baseado em ID antes de definir o estado
@@ -169,6 +185,8 @@ const App: React.FC = () => {
       setTransactions(uniqueTransactions);
       setGoals(uniqueGoals);
       setShoppingItems(uniqueShoppingItems);
+      setBudgets(budgetData);
+      setInstallments(installmentData);
       setHasLoadedData(true);
     } finally {
       setIsLoading(false);
@@ -303,6 +321,9 @@ const App: React.FC = () => {
     setAuth({ user: null, isAuthenticated: false });
     setTransactions([]);
     setGoals([]);
+    setShoppingItems([]);
+    setBudgets([]);
+    setInstallments([]);
   };
 
   // CRUD Handlers
@@ -870,7 +891,17 @@ const App: React.FC = () => {
             Sincronizando com a nuvem...
           </div>
         )}
-        {activeTab === 'dashboard' && <Dashboard transactions={transactions} goals={goals} user={auth.user} auth={auth} />}
+        {activeTab === 'dashboard' && (
+          <Dashboard
+            transactions={transactions}
+            goals={goals}
+            user={auth.user}
+            auth={auth}
+            budgets={budgets}
+            installments={installments}
+            onNavigate={setActiveTab}
+          />
+        )}
         {activeTab === 'transactions' && (
           <Transactions
             transactions={transactions}
@@ -882,13 +913,48 @@ const App: React.FC = () => {
             userEmail={auth.user?.email}
           />
         )}
+        {activeTab === 'budgets' && (
+          <Budgets
+            budgets={budgets}
+            transactions={transactions}
+            showToast={showToast}
+            onSave={async (next) => {
+              setBudgets(next);
+              if (auth.user?.email) await db.saveBudgets(auth.user.email, next);
+            }}
+          />
+        )}
+        {activeTab === 'bills' && (
+          <Installments
+            plans={installments}
+            showToast={showToast}
+            monthIncome={transactions
+              .filter((t) => {
+                if (t.type !== 'income') return false;
+                const [y, m] = t.date.split('-').map(Number);
+                const now = new Date();
+                return y === now.getFullYear() && m === now.getMonth() + 1;
+              })
+              .reduce((s, t) => s + t.amount, 0)}
+            onSave={async (next) => {
+              setInstallments(next);
+              if (auth.user?.email) await db.saveInstallmentPlans(auth.user.email, next);
+            }}
+            onCreateTransaction={(tx) => addTransaction(tx, { allowDuplicate: true })}
+          />
+        )}
         {activeTab === 'shopping' && <Shopping shoppingItems={shoppingItems} onAdd={addShoppingItem} onUpdate={updateShoppingItem} onDelete={deleteShoppingItem} onAddToTransactions={addShoppingToTransactions} showToast={showToast} />}
         {activeTab === 'goals' && (
-          <SubscriptionBlock feature="goals" auth={auth}>
-            <Goals goals={goals} onAdd={addGoal} onUpdate={updateGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />
-          </SubscriptionBlock>
+          <Goals goals={goals} onAdd={addGoal} onUpdate={updateGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />
         )}
-        {activeTab === 'reports' && <Reports transactions={transactions} goals={goals} auth={auth} />}
+        {activeTab === 'reports' && (
+          <Reports
+            transactions={transactions}
+            goals={goals}
+            auth={auth}
+            budgets={budgets}
+          />
+        )}
         {activeTab === 'notifications' && <Notifications userEmail={auth.user!.email} />}
         {activeTab === 'profile' && <Profile user={auth.user!} onUpdate={updateUserProfile} onChangePassword={changePassword} onLogout={handleLogout} auth={auth} />}
         {activeTab === 'admin' && auth.user && auth.user.role === 'admin' && <Admin userEmail={auth.user.email} />}

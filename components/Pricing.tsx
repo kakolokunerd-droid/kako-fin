@@ -20,12 +20,12 @@ export default function Pricing({ onBack, onSelectPlan, mode = 'signup', current
       bgColor: 'bg-yellow-50',
       description: 'Ideal para começar',
       features: [
-        'Dashboard completo com gráficos',
-        'Gerenciar receitas e despesas',
-        'Lista de compras',
-        'Sincronização em nuvem',
-        'Notificações',
-        'Perfil e configurações',
+        'Dashboard com saúde financeira e previsão',
+        'Receitas, despesas e valor pago',
+        'Orçamento por categoria',
+        'Contas longas (parcelamentos)',
+        'Metas financeiras',
+        'Lista de compras e exportação CSV',
       ],
     },
     {
@@ -38,10 +38,10 @@ export default function Pricing({ onBack, onSelectPlan, mode = 'signup', current
       description: 'Mais Popular',
       popular: true,
       features: [
-        'Tudo do plano Básico',
-        'Metas financeiras',
-        'Histórico completo',
-        'Suporte',
+        'Tudo do plano Básico + Trial',
+        'Prioridade no suporte',
+        'Histórico e sincronização reforçados',
+        'Ajuda a manter o app vivo',
       ],
     },
     {
@@ -55,10 +55,9 @@ export default function Pricing({ onBack, onSelectPlan, mode = 'signup', current
       features: [
         'Tudo do plano Premium',
         'Insights com IA',
-        'Relatórios completos e análises avançadas',
-        'Exportação de dados (PDF, DOCX, XLSX)',
-        'Análises comparativas',
-        'Suporte Prioritário 24/7',
+        'Relatórios avançados e comparativos',
+        'Exportação premium (PDF, DOCX, XLSX)',
+        'Suporte prioritário',
       ],
     },
   ];
@@ -98,20 +97,20 @@ export default function Pricing({ onBack, onSelectPlan, mode = 'signup', current
             <h2 className="text-3xl font-bold">Plano Trial - Gratuito Permanente</h2>
           </div>
           <p className="text-teal-50 text-lg mb-6 max-w-2xl">
-            Comece a usar agora mesmo sem compromisso. Plano gratuito permanente, sem vencimento.
+            Ferramentas para organizar a vida financeira de verdade: orçamento, contas, metas e saúde do mês — gratuitas e sem vencimento.
           </p>
           <div className="grid md:grid-cols-3 gap-4 mb-6">
             <div className="flex items-center gap-2">
               <Check className="w-5 h-5" />
-              <span>Gratuito para sempre</span>
+              <span>Orçamento e contas</span>
             </div>
             <div className="flex items-center gap-2">
               <Check className="w-5 h-5" />
-              <span>Sem cartão de crédito</span>
+              <span>Metas e score financeiro</span>
             </div>
             <div className="flex items-center gap-2">
               <Check className="w-5 h-5" />
-              <span>Sem vencimento</span>
+              <span>Sem cartão e sem vencimento</span>
             </div>
           </div>
           <button
