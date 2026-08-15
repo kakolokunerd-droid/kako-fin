@@ -293,7 +293,7 @@ const Installments: React.FC<InstallmentsProps> = ({
         <button
           type="button"
           onClick={openCreateModal}
-          className="inline-flex items-center gap-2 bg-teal-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-teal-700"
+          className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-indigo-700"
         >
           <Plus size={18} />
           Nova conta longa
@@ -429,14 +429,14 @@ const Installments: React.FC<InstallmentsProps> = ({
                     resetForm();
                     setShowModal(false);
                   }}
-                  className="flex-1 py-3 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl"
+                  className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={saving}
-                  className="flex-1 py-3 bg-teal-600 text-white font-bold hover:bg-teal-700 rounded-xl disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                  className="flex-1 py-3 bg-indigo-600 text-white font-bold hover:bg-indigo-700 rounded-xl disabled:opacity-50 inline-flex items-center justify-center gap-2"
                 >
                   {editingId ? (
                     <>
@@ -467,7 +467,7 @@ const Installments: React.FC<InstallmentsProps> = ({
           <button
             type="button"
             onClick={openCreateModal}
-            className="mt-4 inline-flex items-center gap-2 bg-teal-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-teal-700"
+            className="mt-4 inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-indigo-700"
           >
             <Plus size={16} />
             Cadastrar agora

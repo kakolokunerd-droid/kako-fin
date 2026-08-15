@@ -474,7 +474,7 @@ const Profile: React.FC<ProfileProps> = ({ user, onUpdate, onChangePassword, onL
                     setPassError('');
                     setPassSuccess(false);
                   }}
-                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                  className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
                 >
                   Cancelar
                 </button>

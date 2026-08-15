@@ -715,15 +715,21 @@ const Shopping: React.FC<ShoppingProps> = ({
       return;
     }
 
+    const trip = trips.find((t) => t.id === tripId);
     const line: ShoppingLine = {
       id: uid(),
       tripId,
       productName: name,
       quantity: qty,
       unitPrice: price,
-      stockStatus: 'have',
+      stockStatus: trip?.kind === 'occasional' ? undefined : 'have',
     };
     await onSaveLines([line, ...lines]);
+    if (trip?.syncedToTransactions) {
+      await onSaveTrips(
+        trips.map((t) => (t.id === tripId ? { ...t, syncedToTransactions: false } : t))
+      );
+    }
     setProductName('');
     setQuantity('1');
     setUnitPrice('');
@@ -766,11 +772,6 @@ const Shopping: React.FC<ShoppingProps> = ({
     if (next === 'have') showToast?.('Marcado como ainda tem em casa.', 'success');
   };
 
-  const removeLine = async (id: string) => {
-    await onSaveLines(lines.filter((l) => l.id !== id));
-    if (editingLineId === id) setEditingLineId(null);
-  };
-
   const openEditLine = (line: ShoppingLine) => {
     setEditingLineId(line.id);
     setEditLineName(line.productName);
@@ -796,6 +797,7 @@ const Shopping: React.FC<ShoppingProps> = ({
       showToast?.('Preço inválido.', 'warning');
       return;
     }
+    const target = lines.find((l) => l.id === editingLineId);
     await onSaveLines(
       lines.map((l) =>
         l.id === editingLineId
@@ -803,8 +805,33 @@ const Shopping: React.FC<ShoppingProps> = ({
           : l
       )
     );
+    if (target) {
+      const trip = trips.find((t) => t.id === target.tripId);
+      if (trip?.syncedToTransactions) {
+        await onSaveTrips(
+          trips.map((t) =>
+            t.id === target.tripId ? { ...t, syncedToTransactions: false } : t
+          )
+        );
+      }
+    }
     setEditingLineId(null);
     showToast?.('Item atualizado.', 'success');
+  };
+
+  const removeLine = async (id: string) => {
+    const target = lines.find((l) => l.id === id);
+    await onSaveLines(lines.filter((l) => l.id !== id));
+    if (target) {
+      const trip = trips.find((t) => t.id === target.tripId);
+      if (trip?.syncedToTransactions) {
+        await onSaveTrips(
+          trips.map((t) =>
+            t.id === target.tripId ? { ...t, syncedToTransactions: false } : t
+          )
+        );
+      }
+    }
   };
 
   const removeTrip = async (id: string) => {
@@ -948,17 +975,6 @@ const Shopping: React.FC<ShoppingProps> = ({
             </p>
           </button>
           <div className="flex items-center gap-1 shrink-0">
-            {trip.status === 'open' && (
-              <button
-                type="button"
-                onClick={() => setCartTripId(trip.id)}
-                className={`px-3 py-1.5 text-xs font-bold rounded-lg ${
-                  isOccasional ? occTone.btn : 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                }`}
-              >
-                Carrinho
-              </button>
-            )}
             <button
               type="button"
               onClick={() => openEditTrip(trip)}
@@ -979,6 +995,19 @@ const Shopping: React.FC<ShoppingProps> = ({
             </button>
             <button
               type="button"
+              onClick={() => {
+                setCartTripId(trip.id);
+                setProductName('');
+                setQuantity('1');
+                setUnitPrice('');
+              }}
+              className="p-2 rounded-lg text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+              title="Adicionar itens"
+            >
+              <Plus size={18} />
+            </button>
+            <button
+              type="button"
               onClick={() => removeTrip(trip.id)}
               className={`p-2 rounded-lg ${
                 isOccasional ? occTone.trash : 'text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30'
@@ -990,10 +1019,11 @@ const Shopping: React.FC<ShoppingProps> = ({
         </div>
         {open && (
           <div
-            className={`border-t px-4 py-3 space-y-1.5 max-h-64 overflow-y-auto [scrollbar-width:thin] ${
+            className={`border-t ${
               isOccasional ? occTone.cardBorder : 'border-slate-100 dark:border-slate-700'
             }`}
           >
+            <div className="px-4 py-3 space-y-1.5 max-h-56 overflow-y-auto [scrollbar-width:thin]">
             {tripLines.length === 0 ? (
               <p className="text-sm text-slate-400 py-2">
                 {isOccasional ? 'Nenhum item neste gasto.' : 'Nenhum produto nesta compra.'}
@@ -1073,6 +1103,8 @@ const Shopping: React.FC<ShoppingProps> = ({
                 </div>
               ))
             )}
+            </div>
+            <div className="px-4 pb-3 space-y-2">
             {trip.status === 'done' && !trip.syncedToTransactions && onCreateTransaction && (
               <button
                 type="button"
@@ -1092,13 +1124,14 @@ const Shopping: React.FC<ShoppingProps> = ({
                   );
                   showToast?.('Lançado em Transações.', 'success');
                 }}
-                className={`mt-2 text-sm font-semibold hover:underline ${
+                className={`text-sm font-semibold hover:underline ${
                   isOccasional ? occTone.link : 'text-emerald-600'
                 }`}
               >
                 Lançar total em Transações
               </button>
             )}
+            </div>
           </div>
         )}
       </div>
@@ -1199,7 +1232,7 @@ const Shopping: React.FC<ShoppingProps> = ({
           <button
             type="button"
             onClick={() => openCreateTrip('occasional')}
-            className="inline-flex items-center gap-2 bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-400/40 px-4 py-2.5 rounded-xl font-semibold hover:bg-amber-500/25"
+            className="inline-flex items-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-xl font-semibold hover:bg-indigo-700"
           >
             <Sparkles size={16} />
             Gasto avulso
@@ -1207,7 +1240,7 @@ const Shopping: React.FC<ShoppingProps> = ({
           <button
             type="button"
             onClick={() => openCreateTrip('market')}
-            className="inline-flex items-center gap-2 bg-emerald-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-emerald-700"
+            className="inline-flex items-center gap-2 bg-indigo-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-indigo-700"
           >
             <Plus size={18} />
             Nova compra
@@ -1283,13 +1316,13 @@ const Shopping: React.FC<ShoppingProps> = ({
                 <button
                   type="button"
                   onClick={() => setEditingLineId(null)}
-                  className="flex-1 py-3 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800"
+                  className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700"
+                  className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700"
                 >
                   Salvar
                 </button>
@@ -1395,13 +1428,13 @@ const Shopping: React.FC<ShoppingProps> = ({
                 <button
                   type="button"
                   onClick={() => setShowTripModal(false)}
-                  className="flex-1 py-3 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800"
+                  className="flex-1 py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700"
+                  className="flex-1 py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700"
                 >
                   {editingTripId ? 'Salvar' : 'Abrir carrinho'}
                 </button>
@@ -1411,198 +1444,243 @@ const Shopping: React.FC<ShoppingProps> = ({
         </div>
       )}
 
-      {cartTrip && cartTrip.status === 'open' && (
-        <section className="rounded-3xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-900/50 p-4 sm:p-5 space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-2">
-            <div>
-              <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
-                Carrinho aberto
-              </p>
-              <h4 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                {cartTrip.name}
-              </h4>
-              <p className="text-sm text-slate-500">
-                {formatDate(cartTrip.date)} · {cartTrip.category} ·{' '}
-                {cartTrip.kind === 'market' ? 'Mercado' : 'Avulso'}
-              </p>
-            </div>
-            <p className="text-right">
-              <span className="block text-xs text-slate-500">Total</span>
-              <span className="text-xl font-bold text-emerald-700 dark:text-emerald-300">
-                R${' '}
-                {tripTotal(cartTrip.id, lines).toLocaleString('pt-BR', {
-                  minimumFractionDigits: 2,
-                })}
-              </span>
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-[1fr_5rem_7rem_auto] gap-2">
-            <input
-              value={productName}
-              onChange={(e) => setProductName(e.target.value)}
-              list="shopping-product-suggestions"
-              placeholder="Produto (ex: Arroz 5kg)"
-              className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-            <datalist id="shopping-product-suggestions">
-              {productStats.slice(0, 40).map((p) => (
-                <option key={p.key} value={p.label} />
-              ))}
-            </datalist>
-            <input
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              placeholder="Qtd"
-              inputMode="decimal"
-              className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-            <input
-              value={unitPrice}
-              onChange={(e) => setUnitPrice(e.target.value)}
-              placeholder="R$ un."
-              inputMode="decimal"
-              className="px-3 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-600 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
-            />
-            <button
-              type="button"
-              onClick={() => addProductToCart(cartTrip.id)}
-              className="inline-flex items-center justify-center gap-1 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700"
-            >
-              <Plus size={16} />
-              Add
-            </button>
-          </div>
-
-          {cartPriceHint && (
-            <p
-              className={`text-xs font-medium px-1 ${
-                cartPriceHint.diff < -0.009
-                  ? 'text-cyan-600 dark:text-cyan-300'
-                  : cartPriceHint.diff > 0.009
-                    ? 'text-amber-600 dark:text-amber-300'
-                    : 'text-slate-500'
-              }`}
-            >
-              Última compra ({formatDate(cartPriceHint.prior.date)}): R${' '}
-              {cartPriceHint.prior.unitPrice.toLocaleString('pt-BR', {
-                minimumFractionDigits: 2,
-              })}
-              {cartPriceHint.diff < -0.009 && (
-                <>
-                  {' '}
-                  · economizou R${' '}
-                  {Math.abs(cartPriceHint.diff).toLocaleString('pt-BR', {
-                    minimumFractionDigits: 2,
-                  })}{' '}
-                  ({cartPriceHint.pct.toFixed(0)}%)
-                </>
-              )}
-              {cartPriceHint.diff > 0.009 && (
-                <>
-                  {' '}
-                  · +R${' '}
-                  {cartPriceHint.diff.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} mais
-                  caro (+{cartPriceHint.pct.toFixed(0)}%)
-                </>
-              )}
-              {Math.abs(cartPriceHint.diff) <= 0.009 && <> · mesmo preço</>}
-            </p>
-          )}
-
-          {productName.trim() &&
-            outOfStock.some((p) => p.key === normalizeProduct(productName)) && (
-              <p className="text-xs text-red-600 dark:text-red-300 px-1 flex items-center gap-1.5">
-                <AlertTriangle size={13} />
-                Este produto estava marcado como acabou em casa — boa hora de repor.
-              </p>
-            )}
-
-          {productName.trim() &&
-            homeInventory.some(
-              (p) =>
-                p.key === normalizeProduct(productName) && p.stockStatus === 'have'
-            ) && (
-              <p className="text-xs text-amber-700 dark:text-amber-300 px-1 flex items-center gap-1.5">
-                <Package size={13} />
-                Você ainda marcou este item como em casa — confira antes de comprar de novo.
-              </p>
-            )}
-
-          {cartLines.length > 0 ? (
-            <ul className="space-y-1.5 max-h-56 overflow-y-auto [scrollbar-width:thin]">
-              {cartLines.map((l) => (
-                <li
-                  key={l.id}
-                  className="flex items-center justify-between gap-2 rounded-xl bg-white dark:bg-slate-900 px-3 py-2 text-sm border border-slate-100 dark:border-slate-700"
+      {cartTrip && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-slate-700 max-h-[90vh] flex flex-col overflow-hidden">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-start justify-between gap-3 shrink-0">
+              <div className="min-w-0">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+                  {cartTrip.status === 'open' ? 'Carrinho' : 'Adicionar itens'}
+                </p>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 truncate">
+                  {cartTrip.name}
+                </h3>
+                <p className="text-sm text-slate-500">
+                  {formatDate(cartTrip.date)} · {cartTrip.category} ·{' '}
+                  {cartTrip.kind === 'market' ? 'Mercado' : 'Avulso'}
+                </p>
+              </div>
+              <div className="flex items-start gap-2 shrink-0">
+                <p className="text-right mr-1">
+                  <span className="block text-xs text-slate-500">Total</span>
+                  <span className="text-lg font-bold text-emerald-700 dark:text-emerald-300">
+                    R${' '}
+                    {tripTotal(cartTrip.id, lines).toLocaleString('pt-BR', {
+                      minimumFractionDigits: 2,
+                    })}
+                  </span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setCartTripId(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  aria-label="Fechar"
                 >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">
-                      {l.productName}
-                    </p>
-                    <p className="text-xs text-slate-500">
-                      {l.quantity} × R${' '}
-                      {l.unitPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <span className="font-bold text-slate-700 dark:text-slate-200 min-w-[4.5rem] text-right">
-                      R${' '}
-                      {(l.quantity * l.unitPrice).toLocaleString('pt-BR', {
-                        minimumFractionDigits: 2,
-                      })}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => openEditLine(l)}
-                      className="p-1.5 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg"
-                      title="Editar item"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => removeLine(l.id)}
-                      className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg"
-                      title="Remover"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-slate-500 text-center py-4">
-              Vá adicionando os produtos enquanto percorre o mercado.
-            </p>
-          )}
+                  <X size={18} />
+                </button>
+              </div>
+            </div>
 
-          <div className="flex flex-wrap gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setCartTripId(null)}
-              className="px-4 py-2.5 rounded-xl text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-white/60 dark:hover:bg-slate-800"
-            >
-              Minimizar
-            </button>
-            <button
-              type="button"
-              onClick={() => finishTrip(cartTrip, false)}
-              className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300"
-            >
-              Finalizar
-            </button>
-            <button
-              type="button"
-              onClick={() => finishTrip(cartTrip, true)}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700"
-            >
-              <CheckCircle2 size={16} />
-              Finalizar e lançar em Transações
-            </button>
+            <div className="p-5 space-y-4 overflow-y-auto overflow-x-hidden [scrollbar-width:thin]">
+              <div className="space-y-2">
+                <input
+                  value={productName}
+                  onChange={(e) => setProductName(e.target.value)}
+                  list="shopping-product-suggestions"
+                  placeholder="Produto (ex: Arroz 5kg)"
+                  className="w-full min-w-0 px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  autoFocus
+                />
+                <datalist id="shopping-product-suggestions">
+                  {productStats.slice(0, 40).map((p) => (
+                    <option key={p.key} value={p.label} />
+                  ))}
+                </datalist>
+                <div className="grid grid-cols-[5rem_1fr_auto] gap-2">
+                  <input
+                    value={quantity}
+                    onChange={(e) => setQuantity(e.target.value)}
+                    placeholder="Qtd"
+                    inputMode="decimal"
+                    className="min-w-0 px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <input
+                    value={unitPrice}
+                    onChange={(e) => setUnitPrice(e.target.value)}
+                    placeholder="R$ un."
+                    inputMode="decimal"
+                    className="min-w-0 px-3 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-sm outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => addProductToCart(cartTrip.id)}
+                    className="inline-flex items-center justify-center w-11 h-[42px] rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 shrink-0"
+                    title="Adicionar"
+                    aria-label="Adicionar"
+                  >
+                    <Plus size={20} />
+                  </button>
+                </div>
+              </div>
+
+              {cartPriceHint && (
+                <p
+                  className={`text-xs font-medium px-1 ${
+                    cartPriceHint.diff < -0.009
+                      ? 'text-cyan-600 dark:text-cyan-300'
+                      : cartPriceHint.diff > 0.009
+                        ? 'text-amber-600 dark:text-amber-300'
+                        : 'text-slate-500'
+                  }`}
+                >
+                  Última compra ({formatDate(cartPriceHint.prior.date)}): R${' '}
+                  {cartPriceHint.prior.unitPrice.toLocaleString('pt-BR', {
+                    minimumFractionDigits: 2,
+                  })}
+                  {cartPriceHint.diff < -0.009 && (
+                    <>
+                      {' '}
+                      · economizou R${' '}
+                      {Math.abs(cartPriceHint.diff).toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                      })}{' '}
+                      ({cartPriceHint.pct.toFixed(0)}%)
+                    </>
+                  )}
+                  {cartPriceHint.diff > 0.009 && (
+                    <>
+                      {' '}
+                      · +R${' '}
+                      {cartPriceHint.diff.toLocaleString('pt-BR', {
+                        minimumFractionDigits: 2,
+                      })}{' '}
+                      mais caro (+{cartPriceHint.pct.toFixed(0)}%)
+                    </>
+                  )}
+                  {Math.abs(cartPriceHint.diff) <= 0.009 && <> · mesmo preço</>}
+                </p>
+              )}
+
+              {productName.trim() &&
+                outOfStock.some((p) => p.key === normalizeProduct(productName)) && (
+                  <p className="text-xs text-red-600 dark:text-red-300 px-1 flex items-center gap-1.5">
+                    <AlertTriangle size={13} />
+                    Este produto estava marcado como acabou em casa — boa hora de repor.
+                  </p>
+                )}
+
+              {productName.trim() &&
+                homeInventory.some(
+                  (p) =>
+                    p.key === normalizeProduct(productName) && p.stockStatus === 'have'
+                ) && (
+                  <p className="text-xs text-amber-700 dark:text-amber-300 px-1 flex items-center gap-1.5">
+                    <Package size={13} />
+                    Você ainda marcou este item como em casa — confira antes de comprar de novo.
+                  </p>
+                )}
+
+              {cartLines.length > 0 ? (
+                <ul className="space-y-1.5 max-h-56 overflow-y-auto [scrollbar-width:thin]">
+                  {cartLines.map((l) => (
+                    <li
+                      key={l.id}
+                      className="flex items-center justify-between gap-2 rounded-xl bg-slate-50 dark:bg-slate-800/80 px-3 py-2 text-sm border border-slate-100 dark:border-slate-700"
+                    >
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-800 dark:text-slate-100 truncate">
+                          {l.productName}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          {l.quantity} × R${' '}
+                          {l.unitPrice.toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                          })}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="font-bold text-slate-700 dark:text-slate-200 min-w-[4.5rem] text-right">
+                          R${' '}
+                          {(l.quantity * l.unitPrice).toLocaleString('pt-BR', {
+                            minimumFractionDigits: 2,
+                          })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => openEditLine(l)}
+                          className="p-1.5 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg"
+                          title="Editar item"
+                        >
+                          <Edit2 size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeLine(l.id)}
+                          className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg"
+                          title="Remover"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-sm text-slate-500 text-center py-4">
+                  {cartTrip.status === 'open'
+                    ? 'Vá adicionando os produtos enquanto percorre o mercado.'
+                    : 'Nenhum item ainda — cadastre o que faltou.'}
+                </p>
+              )}
+            </div>
+
+            <div className="p-5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap gap-2 shrink-0">
+              {cartTrip.status === 'open' ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCartTripId(null)}
+                    className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => finishTrip(cartTrip, false)}
+                    className="px-4 py-2.5 rounded-xl text-sm font-semibold border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300"
+                  >
+                    Finalizar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => finishTrip(cartTrip, true)}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    <CheckCircle2 size={16} />
+                    Finalizar e lançar
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setCartTripId(null)}
+                    className="px-4 py-2.5 rounded-xl text-sm font-semibold bg-red-600 text-white hover:bg-red-700"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCartTripId(null)}
+                    className="ml-auto px-4 py-2.5 rounded-xl text-sm font-bold bg-emerald-600 text-white hover:bg-emerald-700"
+                  >
+                    Concluído
+                  </button>
+                </>
+              )}
+            </div>
           </div>
-        </section>
+        </div>
       )}
 
       {tab === 'trips' && (

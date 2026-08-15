@@ -390,7 +390,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                   setDeleteSelectionMode(false);
                   setTransactionsToDelete(new Set());
                 }}
-                className="flex items-center gap-2 bg-slate-600 text-white px-4 py-2 rounded-xl hover:bg-slate-700 transition-all font-semibold text-sm"
+                className="flex items-center gap-2 bg-red-600 text-white px-4 py-2 rounded-xl hover:bg-red-700 transition-all font-semibold text-sm"
               >
                 Cancelar
               </button>
@@ -784,7 +784,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                   setShowDeleteModal(false);
                   setTransactionToDelete(null);
                 }}
-                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
               >
                 Cancelar
               </button>
@@ -844,7 +844,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                 onClick={() => {
                   setShowDeleteBulkModal(false);
                 }}
-                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
               >
                 Cancelar
               </button>
@@ -902,7 +902,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                   setShowDeleteMonthModal(false);
                   setMonthToDelete(null);
                 }}
-                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
               >
                 Cancelar
               </button>
@@ -1041,7 +1041,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                   setCopySelectedTransactions(new Set());
                   setCopyDate(getLocalDateString());
                 }}
-                className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
               >
                 Cancelar
               </button>
@@ -1143,7 +1143,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                     resetForm();
                     setShowModal(false);
                   }}
-                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                  className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
                 >
                   Cancelar
                 </button>
@@ -1216,7 +1216,7 @@ const Transactions: React.FC<TransactionsProps> = ({ transactions, onAdd, onUpda
                 <button
                   type="button"
                   onClick={() => setPayModal(null)}
-                  className="flex-1 py-3 text-slate-600 font-bold hover:bg-slate-50 rounded-xl"
+                  className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
                 >
                   Cancelar
                 </button>

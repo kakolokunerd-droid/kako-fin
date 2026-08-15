@@ -419,7 +419,7 @@ const Budgets: React.FC<BudgetsProps> = ({ budgets, transactions, onSave, showTo
                 <button
                   type="button"
                   onClick={() => setShowModal(false)}
-                  className="flex-1 py-3 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl"
+                  className="flex-1 py-3 bg-red-600 text-white font-bold hover:bg-red-700 rounded-xl"
                 >
                   Cancelar
                 </button>

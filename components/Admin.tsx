@@ -280,7 +280,7 @@ const Admin: React.FC<AdminProps> = ({ userEmail }) => {
           <button
             type="submit"
             disabled={creatingNotification}
-            className="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-3.5 rounded-xl font-bold hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="w-full flex items-center justify-center gap-2 bg-indigo-600 text-white py-3.5 rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
           >
             {creatingNotification ? (
               <>
