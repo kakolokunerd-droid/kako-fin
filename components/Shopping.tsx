@@ -17,6 +17,7 @@ import {
   Circle,
   CircleDot,
   Edit2,
+  Bell,
 } from 'lucide-react';
 import {
   BarChart,
@@ -91,7 +92,11 @@ interface ShoppingProps {
     category: string;
     type: 'expense';
   }) => void;
-  showToast?: (message: string, type?: 'success' | 'error' | 'info' | 'warning') => void;
+  showToast?: (
+    message: string,
+    type?: 'success' | 'error' | 'info' | 'warning',
+    options?: { persistent?: boolean }
+  ) => void;
 }
 
 const expenseCategories = Object.values(Category).filter((c) => c !== Category.SALARY);
@@ -848,6 +853,34 @@ const Shopping: React.FC<ShoppingProps> = ({
     setCartTripId(null);
   };
 
+  const stockAlertCount = outOfStock.length + runningLow.length;
+
+  const openStockAlerts = () => {
+    if (stockAlertCount === 0) {
+      showToast?.('Nenhum alerta de estoque no momento.', 'info');
+      return;
+    }
+    const parts: string[] = [];
+    if (outOfStock.length > 0) {
+      parts.push(
+        `${outOfStock.length} produto(s) acabaram — precisa repor:\n${outOfStock
+          .map((p) => `• ${p.label}`)
+          .join('\n')}`
+      );
+    }
+    if (runningLow.length > 0) {
+      parts.push(
+        `${runningLow.length} produto(s) acabando:\n${runningLow
+          .map((p) => `• ${p.label}`)
+          .join('\n')}`
+      );
+    }
+    parts.push('\nAbra a aba “Em casa” para atualizar o status.');
+    showToast?.(parts.join('\n\n'), outOfStock.length > 0 ? 'error' : 'warning', {
+      persistent: true,
+    });
+  };
+
   const cartTrip = cartTripId ? trips.find((t) => t.id === cartTripId) : null;
   const cartLines = cartTripId ? lines.filter((l) => l.tripId === cartTripId) : [];
 
@@ -1074,8 +1107,26 @@ const Shopping: React.FC<ShoppingProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-950 text-white rounded-3xl p-6 shadow-lg border border-slate-700/80">
-        <div className="flex items-start gap-3">
+      <div className="bg-gradient-to-br from-slate-800 via-slate-800 to-emerald-950 text-white rounded-3xl p-6 shadow-lg border border-slate-700/80 relative">
+        <button
+          type="button"
+          onClick={openStockAlerts}
+          className="absolute top-4 right-4 sm:top-5 sm:right-5 inline-flex items-center justify-center h-10 w-10 rounded-xl bg-white/10 hover:bg-white/15 text-white border border-white/15 transition-colors"
+          title={
+            stockAlertCount > 0
+              ? `${stockAlertCount} alerta(s) de estoque`
+              : 'Alertas de estoque'
+          }
+          aria-label="Alertas de estoque"
+        >
+          <Bell size={18} className="relative z-0" />
+          {stockAlertCount > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 z-10 min-w-[1.15rem] h-[1.15rem] px-1 rounded-full bg-amber-400 text-slate-900 text-[10px] font-bold flex items-center justify-center ring-2 ring-slate-800">
+              {stockAlertCount > 9 ? '9+' : stockAlertCount}
+            </span>
+          )}
+        </button>
+        <div className="flex items-start gap-3 pr-12">
           <ShoppingCart size={28} className="mt-0.5 shrink-0 text-emerald-300" />
           <div className="min-w-0">
             <h3 className="text-xl font-bold">Compras</h3>
@@ -1144,7 +1195,7 @@ const Shopping: React.FC<ShoppingProps> = ({
             </button>
           ))}
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 items-center">
           <button
             type="button"
             onClick={() => openCreateTrip('occasional')}
@@ -1163,63 +1214,6 @@ const Shopping: React.FC<ShoppingProps> = ({
           </button>
         </div>
       </div>
-
-      {(outOfStock.length > 0 || runningLow.length > 0) && (
-        <div className="space-y-2">
-          {outOfStock.length > 0 && (
-            <div className="rounded-2xl border border-red-300/50 dark:border-red-800/60 bg-red-50/80 dark:bg-red-950/30 px-4 py-3 flex flex-wrap items-start gap-2 justify-between">
-              <div className="flex items-start gap-2 min-w-0">
-                <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-bold text-red-700 dark:text-red-300">
-                    {outOfStock.length} produto(s) acabaram — precisa repor
-                  </p>
-                  <p className="text-xs text-red-600/80 dark:text-red-300/70 mt-0.5">
-                    {outOfStock
-                      .slice(0, 5)
-                      .map((p) => p.label)
-                      .join(', ')}
-                    {outOfStock.length > 5 ? '…' : ''}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTab('home')}
-                className="text-xs font-bold text-red-700 dark:text-red-300 underline shrink-0"
-              >
-                Ver em casa
-              </button>
-            </div>
-          )}
-          {runningLow.length > 0 && (
-            <div className="rounded-2xl border border-amber-300/50 dark:border-amber-800/60 bg-amber-50/80 dark:bg-amber-950/30 px-4 py-3 flex flex-wrap items-start gap-2 justify-between">
-              <div className="flex items-start gap-2 min-w-0">
-                <CircleDot size={18} className="text-amber-500 shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">
-                    {runningLow.length} produto(s) acabando
-                  </p>
-                  <p className="text-xs text-amber-700/80 dark:text-amber-300/70 mt-0.5">
-                    {runningLow
-                      .slice(0, 5)
-                      .map((p) => p.label)
-                      .join(', ')}
-                    {runningLow.length > 5 ? '…' : ''}
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTab('home')}
-                className="text-xs font-bold text-amber-800 dark:text-amber-300 underline shrink-0"
-              >
-                Ver em casa
-              </button>
-            </div>
-          )}
-        </div>
-      )}
 
       {editingLineId && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4">

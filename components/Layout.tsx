@@ -260,9 +260,6 @@ const Layout: React.FC<LayoutProps> = ({
             <h2 className="text-lg font-semibold text-slate-800 dark:text-slate-100">
               {menuItems.find((i) => i.id === activeTab)?.label}
             </h2>
-            <span className="text-xs text-slate-400 font-medium">
-              v{APP_VERSION}
-            </span>
           </div>
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end hidden sm:flex">
@@ -297,11 +294,14 @@ const Layout: React.FC<LayoutProps> = ({
 
         {/* Footer */}
         <footer className="hidden md:block bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 px-8 py-4">
-          <div className="flex items-center justify-center">
+          <div className="relative flex items-center justify-center">
             <p className="text-xs text-slate-500 dark:text-slate-400">
               © {new Date().getFullYear()} Kako Solutions. Todos os direitos
               reservados.
             </p>
+            <span className="absolute right-0 text-xs text-slate-400 dark:text-slate-500 font-medium tabular-nums">
+              v{APP_VERSION}
+            </span>
           </div>
         </footer>
 
