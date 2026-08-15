@@ -315,10 +315,14 @@ const Reports: React.FC<ReportsProps> = ({ transactions, goals, auth, budgets = 
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
               <h4 className="font-bold text-slate-800">Como usar o relatório de orçamento</h4>
               <ul className="text-sm text-slate-600 space-y-2 list-disc pl-5">
-                <li>Alterne entre <strong>Mensal</strong> e <strong>Anual</strong> no gráfico acima.</li>
+                <li>
+                  Na aba <strong>Mensal</strong>, escolha o mês e cadastre limites por categoria.
+                </li>
+                <li>
+                  O <strong>Anual</strong> é a soma automática dos meses — não se cadastra separado.
+                </li>
                 <li>Barras vermelhas/âmbar mostram categorias no limite ou estouradas.</li>
-                <li>A tendência de 6 meses ajuda a ver se o gasto está acelerando.</li>
-                <li>Ajuste limites em Orçamento e volte aqui para acompanhar.</li>
+                <li>Use “Copiar orçamento do mês anterior” para montar o ano mais rápido.</li>
               </ul>
             </div>
           )}

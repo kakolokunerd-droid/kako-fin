@@ -168,11 +168,21 @@ export function calcFinancialHealth(
 
   const spent = spentByCategory(transactions);
   const spentYear = spentByCategoryYear(transactions);
-  const monthlyBudgets = budgets.filter((b) => (b.period || 'monthly') === 'monthly');
-  const yearlyBudgets = budgets.filter((b) => b.period === 'yearly');
+  const ym = currentYearMonth();
+  const year = String(new Date().getFullYear());
+
+  const monthlyBudgets = budgets.filter((b) => b.yearMonth === ym);
+  // Anual = soma dos limites mensais do ano, por categoria
+  const yearlyLimitByCategory: Record<string, number> = {};
+  for (const b of budgets) {
+    if (!b.yearMonth?.startsWith(year)) continue;
+    yearlyLimitByCategory[b.category] =
+      (yearlyLimitByCategory[b.category] || 0) + b.monthlyLimit;
+  }
+  const yearlyEntries = Object.entries(yearlyLimitByCategory);
 
   if (budgets.length === 0) {
-    tips.push('Defina orçamentos mensais e anuais por categoria — isso evita surpresas.');
+    tips.push('Defina orçamentos por mês e categoria — o anual nasce da soma dos meses.');
   } else {
     let over = 0;
     let ok = 0;
@@ -181,27 +191,27 @@ export function calcFinancialHealth(
       if (used > b.monthlyLimit) over++;
       else ok++;
     }
-    for (const b of yearlyBudgets) {
-      const used = spentYear[b.category] || 0;
-      if (used > b.monthlyLimit) over++;
+    for (const [category, limit] of yearlyEntries) {
+      const used = spentYear[category] || 0;
+      if (used > limit) over++;
       else ok++;
     }
-    const tracked = monthlyBudgets.length + yearlyBudgets.length;
-    if (over === 0) score += 15;
-    else if (tracked > 0 && over <= tracked / 2) {
+    const tracked = monthlyBudgets.length + yearlyEntries.length;
+    if (tracked === 0) {
+      tips.push('Cadastre o orçamento deste mês para acompanhar o foco no curto prazo.');
+    } else if (over === 0) {
+      score += 15;
+      if (ok > 0) tips.push('Parabéns: seus orçamentos estão sob controle.');
+    } else if (over <= tracked / 2) {
       score += 5;
       tips.push(`${over} orçamento(s) passaram do limite. Ajuste gastos ou o teto.`);
     } else {
       score -= 10;
       tips.push('Vários orçamentos estourou. Revise limites realistas e foque nas maiores categorias.');
     }
-    if (ok > 0 && over === 0) {
-      tips.push('Parabéns: seus orçamentos estão sob controle.');
-    }
   }
 
   const now = new Date();
-  const ym = currentYearMonth(now);
   const burden = monthlyInstallmentBurden(plans, ym);
   const income = monthIncome(transactions, now.getFullYear(), now.getMonth() + 1);
   const pendingThisMonth = getAllPendingInstallments(plans, { onlyCurrentMonth: true });

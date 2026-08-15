@@ -25,6 +25,8 @@ import {
   UserProfile,
   Category,
   ShoppingItem,
+  ShoppingTrip,
+  ShoppingLine,
   CategoryBudget,
   InstallmentPlan,
 } from './types';
@@ -55,7 +57,8 @@ const App: React.FC = () => {
   // App Data
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [shoppingItems, setShoppingItems] = useState<ShoppingItem[]>([]);
+  const [shoppingTrips, setShoppingTrips] = useState<ShoppingTrip[]>([]);
+  const [shoppingLines, setShoppingLines] = useState<ShoppingLine[]>([]);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [installments, setInstallments] = useState<InstallmentPlan[]>([]);
   
@@ -95,7 +98,8 @@ const App: React.FC = () => {
       setHasLoadedData(false);
       setTransactions([]);
       setGoals([]);
-      setShoppingItems([]);
+      setShoppingTrips([]);
+      setShoppingLines([]);
       setBudgets([]);
       setInstallments([]);
     }
@@ -153,13 +157,16 @@ const App: React.FC = () => {
     setIsLoading(true);
     setIsLoadingData(true);
     try {
-      const [tData, gData, sData, budgetData, installmentData] = await Promise.all([
-        db.getData<Transaction>('transactions', userId),
-        db.getData<Goal>('goals', userId),
-        db.getData<ShoppingItem>('shopping', userId),
-        db.getBudgets(userId),
-        db.getInstallmentPlans(userId),
-      ]);
+      const [tData, gData, legacyShopping, budgetData, installmentData, tripsData, linesData] =
+        await Promise.all([
+          db.getData<Transaction>('transactions', userId),
+          db.getData<Goal>('goals', userId),
+          db.getData<ShoppingItem>('shopping', userId),
+          db.getBudgets(userId),
+          db.getInstallmentPlans(userId),
+          db.getShoppingTrips(userId),
+          db.getShoppingLines(userId),
+        ]);
       
       // Remover duplicatas baseado em ID antes de definir o estado
       const uniqueTransactions = Array.from(
@@ -168,9 +175,6 @@ const App: React.FC = () => {
       const uniqueGoals = Array.from(
         new Map(gData.map(g => [g.id, g])).values()
       );
-      const uniqueShoppingItems = Array.from(
-        new Map(sData.map(s => [s.id, s])).values()
-      );
       
       if (uniqueTransactions.length !== tData.length) {
         console.warn(`⚠️ Removidas ${tData.length - uniqueTransactions.length} transações duplicadas`);
@@ -178,13 +182,42 @@ const App: React.FC = () => {
       if (uniqueGoals.length !== gData.length) {
         console.warn(`⚠️ Removidas ${gData.length - uniqueGoals.length} metas duplicadas`);
       }
-      if (uniqueShoppingItems.length !== sData.length) {
-        console.warn(`⚠️ Removidos ${sData.length - uniqueShoppingItems.length} itens de compra duplicados`);
+
+      let trips = Array.from(new Map(tripsData.map((t) => [t.id, t])).values());
+      let lines = Array.from(new Map(linesData.map((l) => [l.id, l])).values());
+
+      // Migra modelo antigo (1 item = 1 compra) → trip + linha de produto
+      if (trips.length === 0 && legacyShopping.length > 0) {
+        trips = [];
+        lines = [];
+        for (const item of legacyShopping) {
+          const tripId = item.id;
+          trips.push({
+            id: tripId,
+            name: item.name,
+            date: item.purchaseDate,
+            category: item.category,
+            kind: item.category === Category.ENTERTAINMENT ? 'occasional' : 'market',
+            status: 'done',
+            syncedToTransactions: false,
+          });
+          lines.push({
+            id: `${tripId}-line`,
+            tripId,
+            productName: item.name,
+            quantity: 1,
+            unitPrice: item.amount,
+          });
+        }
+        await db.saveShoppingTrips(userId, trips);
+        await db.saveShoppingLines(userId, lines);
+        console.log(`✅ Migradas ${legacyShopping.length} compras antigas para carrinhos`);
       }
       
       setTransactions(uniqueTransactions);
       setGoals(uniqueGoals);
-      setShoppingItems(uniqueShoppingItems);
+      setShoppingTrips(trips);
+      setShoppingLines(lines);
       setBudgets(budgetData);
       setInstallments(installmentData);
       setHasLoadedData(true);
@@ -222,10 +255,16 @@ const App: React.FC = () => {
   }, [goals, auth.isAuthenticated, hasLoadedData, isLoadingData]);
 
   useEffect(() => {
-    if (auth.isAuthenticated && auth.user && hasLoadedData && !isLoadingData && shoppingItems.length >= 0) {
-      db.saveData('shopping', auth.user.email, shoppingItems);
+    if (auth.isAuthenticated && auth.user && hasLoadedData && !isLoadingData) {
+      db.saveShoppingTrips(auth.user.email, shoppingTrips);
     }
-  }, [shoppingItems, auth.isAuthenticated, hasLoadedData, isLoadingData]);
+  }, [shoppingTrips, auth.isAuthenticated, hasLoadedData, isLoadingData]);
+
+  useEffect(() => {
+    if (auth.isAuthenticated && auth.user && hasLoadedData && !isLoadingData) {
+      db.saveShoppingLines(auth.user.email, shoppingLines);
+    }
+  }, [shoppingLines, auth.isAuthenticated, hasLoadedData, isLoadingData]);
 
   useEffect(() => {
     localStorage.setItem('fintrack_auth', JSON.stringify(auth));
@@ -321,7 +360,8 @@ const App: React.FC = () => {
     setAuth({ user: null, isAuthenticated: false });
     setTransactions([]);
     setGoals([]);
-    setShoppingItems([]);
+    setShoppingTrips([]);
+    setShoppingLines([]);
     setBudgets([]);
     setInstallments([]);
   };
@@ -432,177 +472,15 @@ const App: React.FC = () => {
     setGoals(goals.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g));
   };
 
-  // Shopping Handlers
-  const addShoppingItem = (item: Omit<ShoppingItem, 'id'>) => {
-    const newItem = { ...item, id: Math.random().toString(36).substr(2, 9) };
-    setShoppingItems(prev => [...prev, newItem]);
+  // Shopping Handlers (carrinhos + produtos)
+  const saveShoppingTrips = async (next: ShoppingTrip[]) => {
+    setShoppingTrips(next);
+    if (auth.user?.email) await db.saveShoppingTrips(auth.user.email, next);
   };
 
-  const updateShoppingItem = (id: string, updated: Omit<ShoppingItem, 'id'>) => {
-    setShoppingItems(shoppingItems.map(item => item.id === id ? { ...updated, id } : item));
-  };
-
-  const deleteShoppingItem = async (id: string) => {
-    if (!auth.user) return;
-    
-    // Salvar o estado anterior para possível reversão
-    const previousItems = shoppingItems;
-    
-    // Remover do estado local primeiro
-    const updatedItems = shoppingItems.filter(item => item.id !== id);
-    setShoppingItems(updatedItems);
-    
-    // Persistir no banco imediatamente
-    try {
-      await db.saveData('shopping', auth.user.email, updatedItems);
-      console.log('✅ Item excluído e persistido no banco');
-      showToast('Item excluído com sucesso!', 'success');
-    } catch (error) {
-      console.error('❌ Erro ao excluir item do banco:', error);
-      // Reverter a mudança no estado se houver erro
-      setShoppingItems(previousItems);
-      showToast('Erro ao excluir item. Tente novamente.', 'error');
-    }
-  };
-
-
-  const addShoppingToTransactions = async (newTransactions: Array<{ description: string; amount: number; date: string; category: string; type: 'expense' }>, month?: number, year?: number, itemNamesToUpdate?: Set<string>) => {
-    if (!auth.user) return;
-    
-    setIsLoading(true);
-    
-    try {
-      // Se mês e ano foram especificados, remover transações do banco ANTES de atualizar o estado
-      if (month !== undefined && year !== undefined) {
-        console.log('🗑️ Removendo transações de gastos do banco para o mês:', month, 'ano:', year);
-        
-        // Remover do banco: remover apenas as transações relacionadas aos itens que estão sendo adicionados
-        // Parcelas de compras parceladas de outros itens serão preservadas (como receitas)
-        await db.deleteTransactionsByMonth(auth.user.email, month, year, 'expense', itemNamesToUpdate);
-        
-        // Recarregar transações do banco para garantir sincronização
-        console.log('🔄 Recarregando transações do banco após remoção...');
-        const updatedTransactions = await db.getData<Transaction>('transactions', auth.user.email);
-        
-        // Remover duplicatas por ID ao recarregar
-        const uniqueUpdatedTransactions = Array.from(
-          new Map(updatedTransactions.map(t => [t.id, t])).values()
-        );
-        
-        console.log(`✅ ${uniqueUpdatedTransactions.length} transações carregadas do banco`);
-        
-        // Agora adicionar as novas transações ao estado atualizado
-        setTransactions(prevTransactions => {
-          // Usar as transações recarregadas do banco como base
-          let filteredTransactions = uniqueUpdatedTransactions;
-          
-          // Criar um Set com IDs existentes para verificar duplicatas
-          const existingIds = new Set(filteredTransactions.map(t => t.id));
-          
-          // Adicionar novas transações, evitando duplicatas por descrição, data e valor
-          const transactionsToAdd: Transaction[] = [];
-          const seenKeys = new Set<string>();
-          
-          newTransactions.forEach(t => {
-            // Criar uma chave única baseada em descrição, data, valor e tipo para evitar duplicatas
-            const uniqueKey = `${t.description}|${t.date}|${t.amount}|${t.type}`;
-            
-            // Verificar se já existe uma transação idêntica nas transações recarregadas
-            const alreadyExists = filteredTransactions.some(existing => 
-              existing.description === t.description &&
-              existing.date === t.date &&
-              existing.amount === t.amount &&
-              existing.type === t.type
-            );
-            
-            if (!seenKeys.has(uniqueKey) && !alreadyExists) {
-              seenKeys.add(uniqueKey);
-              
-              // Gerar ID único
-              let newId: string;
-              do {
-                newId = Math.random().toString(36).substr(2, 9);
-              } while (existingIds.has(newId));
-              
-              existingIds.add(newId);
-              
-              transactionsToAdd.push({
-                ...t,
-                id: newId
-              });
-            } else {
-              console.warn('⚠️ Transação duplicada ignorada:', t.description, t.date);
-            }
-          });
-          
-          console.log('Adicionando novas transações:', transactionsToAdd.length);
-          console.log('Total de transações após adição:', transactionsToAdd.length + filteredTransactions.length);
-          
-          // Remover duplicatas finais baseadas em ID antes de retornar
-          const allTransactions = [...transactionsToAdd, ...filteredTransactions];
-          const uniqueTransactions = Array.from(
-            new Map(allTransactions.map(t => [t.id, t])).values()
-          );
-          
-          // Também remover duplicatas por chave única (descrição|data|valor|tipo)
-          const finalTransactions: Transaction[] = [];
-          const finalSeenKeys = new Set<string>();
-          
-          uniqueTransactions.forEach(t => {
-            const uniqueKey = `${t.description}|${t.date}|${t.amount}|${t.type}`;
-            if (!finalSeenKeys.has(uniqueKey)) {
-              finalSeenKeys.add(uniqueKey);
-              finalTransactions.push(t);
-            } else {
-              console.warn('⚠️ Removendo duplicata final:', t.description, t.date);
-            }
-          });
-          
-          if (finalTransactions.length !== uniqueTransactions.length) {
-            console.warn(`⚠️ Removidas ${uniqueTransactions.length - finalTransactions.length} duplicatas finais por chave única`);
-          }
-          
-          return finalTransactions;
-        });
-      } else {
-        // Se não especificou mês/ano, apenas adicionar sem remover
-        setTransactions(prevTransactions => {
-          const existingIds = new Set(prevTransactions.map(t => t.id));
-          const transactionsToAdd: Transaction[] = [];
-          const seenKeys = new Set<string>();
-          
-          newTransactions.forEach(t => {
-            const uniqueKey = `${t.description}|${t.date}|${t.amount}|${t.type}`;
-            
-            const alreadyExists = prevTransactions.some(existing => 
-              existing.description === t.description &&
-              existing.date === t.date &&
-              existing.amount === t.amount &&
-              existing.type === t.type
-            );
-            
-            if (!seenKeys.has(uniqueKey) && !alreadyExists) {
-              seenKeys.add(uniqueKey);
-              
-              let newId: string;
-              do {
-                newId = Math.random().toString(36).substr(2, 9);
-              } while (existingIds.has(newId));
-              
-              existingIds.add(newId);
-              transactionsToAdd.push({ ...t, id: newId });
-            }
-          });
-          
-          return [...transactionsToAdd, ...prevTransactions];
-        });
-      }
-    } catch (error) {
-      console.error('❌ Erro ao adicionar transações:', error);
-      showToast('Erro ao adicionar transações. Tente novamente.', 'error');
-    } finally {
-      setIsLoading(false);
-    }
+  const saveShoppingLines = async (next: ShoppingLine[]) => {
+    setShoppingLines(next);
+    if (auth.user?.email) await db.saveShoppingLines(auth.user.email, next);
   };
 
   const updateUserProfile = async (updated: UserProfile) => {
@@ -943,7 +821,17 @@ const App: React.FC = () => {
             onCreateTransaction={(tx) => addTransaction(tx, { allowDuplicate: true })}
           />
         )}
-        {activeTab === 'shopping' && <Shopping shoppingItems={shoppingItems} onAdd={addShoppingItem} onUpdate={updateShoppingItem} onDelete={deleteShoppingItem} onAddToTransactions={addShoppingToTransactions} showToast={showToast} />}
+        {activeTab === 'shopping' && (
+          <Shopping
+            trips={shoppingTrips}
+            lines={shoppingLines}
+            budgets={budgets}
+            onSaveTrips={saveShoppingTrips}
+            onSaveLines={saveShoppingLines}
+            onCreateTransaction={(tx) => addTransaction(tx, { allowDuplicate: true })}
+            showToast={showToast}
+          />
+        )}
         {activeTab === 'goals' && (
           <Goals goals={goals} onAdd={addGoal} onUpdate={updateGoal} onDelete={deleteGoal} onUpdateProgress={updateGoalProgress} />
         )}

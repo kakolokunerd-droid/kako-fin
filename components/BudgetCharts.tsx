@@ -11,20 +11,28 @@ import {
   Cell,
 } from 'recharts';
 import { PiggyBank, AlertTriangle } from 'lucide-react';
-import { BudgetPeriod, CategoryBudget, Transaction } from '../types';
-import { spentByCategory, spentByCategoryYear } from '../services/financialHealth';
+import { CategoryBudget, Transaction } from '../types';
+import {
+  currentYearMonth,
+  spentByCategory,
+  spentByCategoryYear,
+} from '../services/financialHealth';
+import MonthPicker from './MonthPicker';
 
 interface BudgetChartsProps {
   budgets: CategoryBudget[];
   transactions: Transaction[];
   onNavigate?: (tab: string) => void;
-  /** Compacto no Dashboard; completo em Relatórios */
   variant?: 'dashboard' | 'reports';
   className?: string;
 }
 
-function normalizePeriod(b: CategoryBudget): BudgetPeriod {
-  return b.period === 'yearly' ? 'yearly' : 'monthly';
+type ViewMode = 'monthly' | 'yearly';
+
+function formatYmShort(ym: string): string {
+  const [y, m] = ym.split('-').map(Number);
+  const names = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+  return `${names[m - 1]}/${String(y).slice(2)}`;
 }
 
 const BudgetCharts: React.FC<BudgetChartsProps> = ({
@@ -34,34 +42,64 @@ const BudgetCharts: React.FC<BudgetChartsProps> = ({
   variant = 'dashboard',
   className = '',
 }) => {
-  const [period, setPeriod] = useState<BudgetPeriod>('monthly');
+  const [viewMode, setViewMode] = useState<ViewMode>('monthly');
+  const [selectedMonth, setSelectedMonth] = useState(currentYearMonth());
+  const selectedYear = selectedMonth.slice(0, 4);
+  const [yNum, mNum] = selectedMonth.split('-').map(Number);
 
-  const spentMonth = useMemo(() => spentByCategory(transactions), [transactions]);
-  const spentYear = useMemo(() => spentByCategoryYear(transactions), [transactions]);
-  const spent = period === 'yearly' ? spentYear : spentMonth;
-
-  const periodBudgets = useMemo(
-    () => budgets.filter((b) => normalizePeriod(b) === period),
-    [budgets, period]
+  const spentMonth = useMemo(
+    () => spentByCategory(transactions, yNum, mNum),
+    [transactions, yNum, mNum]
+  );
+  const spentYear = useMemo(
+    () => spentByCategoryYear(transactions, Number(selectedYear)),
+    [transactions, selectedYear]
   );
 
+  const monthBudgets = useMemo(
+    () => budgets.filter((b) => b.yearMonth === selectedMonth),
+    [budgets, selectedMonth]
+  );
+
+  const yearlyByCategory = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const b of budgets) {
+      if (!b.yearMonth?.startsWith(selectedYear)) continue;
+      map[b.category] = (map[b.category] || 0) + b.monthlyLimit;
+    }
+    return map;
+  }, [budgets, selectedYear]);
+
   const chartData = useMemo(() => {
-    return periodBudgets
-      .map((b) => {
-        const gasto = spent[b.category] || 0;
-        const limite = b.monthlyLimit;
+    if (viewMode === 'monthly') {
+      return monthBudgets
+        .map((b) => {
+          const gasto = spentMonth[b.category] || 0;
+          const limite = b.monthlyLimit;
+          return {
+            name: b.category.length > 12 ? `${b.category.slice(0, 11)}…` : b.category,
+            fullName: b.category,
+            limite,
+            gasto,
+            pct: limite > 0 ? (gasto / limite) * 100 : 0,
+          };
+        })
+        .sort((a, b) => b.pct - a.pct);
+    }
+
+    return Object.entries(yearlyByCategory)
+      .map(([category, limite]) => {
+        const gasto = spentYear[category] || 0;
         return {
-          name: b.category.length > 12 ? `${b.category.slice(0, 11)}…` : b.category,
-          fullName: b.category,
+          name: category.length > 12 ? `${category.slice(0, 11)}…` : category,
+          fullName: category,
           limite,
           gasto,
-          restante: Math.max(0, limite - gasto),
-          estourou: Math.max(0, gasto - limite),
           pct: limite > 0 ? (gasto / limite) * 100 : 0,
         };
       })
       .sort((a, b) => b.pct - a.pct);
-  }, [periodBudgets, spent]);
+  }, [viewMode, monthBudgets, yearlyByCategory, spentMonth, spentYear]);
 
   const totals = useMemo(() => {
     const limite = chartData.reduce((s, d) => s + d.limite, 0);
@@ -75,32 +113,37 @@ const BudgetCharts: React.FC<BudgetChartsProps> = ({
     };
   }, [chartData]);
 
+  /** Tendência: cada mês usa o orçamento cadastrado naquele mês (não o mês selecionado) */
   const monthTrend = useMemo(() => {
-    if (period !== 'monthly' || periodBudgets.length === 0) return [];
+    if (viewMode !== 'monthly') return [];
     const now = new Date();
-    const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
     const points = [];
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const y = d.getFullYear();
       const m = d.getMonth() + 1;
+      const ym = `${y}-${String(m).padStart(2, '0')}`;
+      const monthItems = budgets.filter((b) => b.yearMonth === ym);
       const spentMap = spentByCategory(transactions, y, m);
       let gasto = 0;
       let limite = 0;
-      for (const b of periodBudgets) {
+      for (const b of monthItems) {
         gasto += spentMap[b.category] || 0;
         limite += b.monthlyLimit;
       }
       points.push({
-        label: `${monthNames[d.getMonth()]}/${String(y).slice(2)}`,
+        label: formatYmShort(ym),
         gasto: Number(gasto.toFixed(2)),
         limite: Number(limite.toFixed(2)),
       });
     }
     return points;
-  }, [period, periodBudgets, transactions]);
+  }, [viewMode, budgets, transactions]);
 
-  const periodTitle = period === 'yearly' ? `Ano ${new Date().getFullYear()}` : 'Mês atual';
+  const periodTitle =
+    viewMode === 'yearly'
+      ? `Ano ${selectedYear} (soma dos meses)`
+      : formatYmShort(selectedMonth);
 
   if (budgets.length === 0) {
     return (
@@ -112,7 +155,7 @@ const BudgetCharts: React.FC<BudgetChartsProps> = ({
           Orçamento — visão gráfica
         </h4>
         <p className="text-sm text-slate-500 mb-3">
-          Ainda não há limites cadastrados. Defina mensal e anual para acompanhar o foco.
+          Cadastre limites por mês. O anual nasce da soma desses meses.
         </p>
         <button
           type="button"
@@ -136,38 +179,47 @@ const BudgetCharts: React.FC<BudgetChartsProps> = ({
             Orçamento — {periodTitle}
           </h4>
           <p className="text-xs text-slate-500 mt-1">
-            Compare limite × gasto por categoria ({period === 'yearly' ? 'ano' : 'mês'}).
+            {viewMode === 'yearly'
+              ? 'Limite anual = soma dos orçamentos mensais cadastrados.'
+              : 'Compare limite × gasto do mês selecionado.'}
           </p>
         </div>
-        <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl gap-1 self-start">
-          <button
-            type="button"
-            onClick={() => setPeriod('monthly')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-              period === 'monthly'
-                ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm'
-                : 'text-slate-500'
-            }`}
-          >
-            Mensal
-          </button>
-          <button
-            type="button"
-            onClick={() => setPeriod('yearly')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-              period === 'yearly'
-                ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm'
-                : 'text-slate-500'
-            }`}
-          >
-            Anual
-          </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800 rounded-xl gap-1">
+            <button
+              type="button"
+              onClick={() => setViewMode('monthly')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                viewMode === 'monthly'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm'
+                  : 'text-slate-500'
+              }`}
+            >
+              Mensal
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('yearly')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                viewMode === 'yearly'
+                  ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-300 shadow-sm'
+                  : 'text-slate-500'
+              }`}
+            >
+              Anual
+            </button>
+          </div>
+          <MonthPicker
+            value={selectedMonth}
+            onChange={setSelectedMonth}
+            className="[&_button]:h-8 [&_button]:px-2.5 [&_button]:py-0 [&_button]:rounded-lg [&_button]:text-xs"
+          />
         </div>
       </div>
 
-      {periodBudgets.length === 0 ? (
+      {chartData.length === 0 ? (
         <p className="text-sm text-slate-500 py-6 text-center">
-          Nenhum orçamento {period === 'yearly' ? 'anual' : 'mensal'}.{' '}
+          Nenhum orçamento neste período.{' '}
           <button
             type="button"
             className="text-indigo-600 font-semibold underline"
@@ -217,7 +269,7 @@ const BudgetCharts: React.FC<BudgetChartsProps> = ({
             <div className="flex items-start gap-2 text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30 rounded-xl px-3 py-2">
               <AlertTriangle size={16} className="mt-0.5 shrink-0" />
               <span>
-                {totals.overCount} categoria(s) acima do limite neste período. Foque nelas primeiro.
+                {totals.overCount} categoria(s) acima do limite neste período.
               </span>
             </div>
           )}
@@ -282,10 +334,10 @@ const BudgetCharts: React.FC<BudgetChartsProps> = ({
             </ResponsiveContainer>
           </div>
 
-          {period === 'monthly' && monthTrend.length > 0 && (
+          {viewMode === 'monthly' && monthTrend.length > 0 && (
             <div>
               <p className="text-xs font-bold text-slate-500 uppercase mb-2">
-                Tendência (últimos 6 meses) — categorias orçadas
+                Tendência (últimos 6 meses) — limites cadastrados em cada mês
               </p>
               <div className="h-44 md:h-52">
                 <ResponsiveContainer width="100%" height="100%">

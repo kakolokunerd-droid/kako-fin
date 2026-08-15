@@ -1,4 +1,4 @@
-import { Transaction, Goal, UserProfile, Notification, PaidTransactionsMap, PaidTransactionInfo, CategoryBudget, InstallmentPlan } from "../types";
+import { Transaction, Goal, UserProfile, Notification, PaidTransactionsMap, PaidTransactionInfo, CategoryBudget, InstallmentPlan, ShoppingTrip, ShoppingLine } from "../types";
 import { supabase } from "./supabaseClient";
 
 import { hashPassword, verifyPassword } from './passwordService';
@@ -1184,71 +1184,80 @@ class CloudDatabase {
   }
 
   async getBudgets(userId: string): Promise<CategoryBudget[]> {
-      const normalize = (b: any): CategoryBudget => ({
-        id: b.id,
-        category: b.category,
-        monthlyLimit: parseFloat(b.monthlyLimit ?? b.monthly_limit ?? 0),
-        period: b.period === 'yearly' ? 'yearly' : 'monthly',
-      });
+    const currentYm = (() => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    })();
 
-      const fromLocal = (): CategoryBudget[] => {
-        try {
-          const raw = localStorage.getItem(this.getBudgetsKey(userId));
-          return raw ? (JSON.parse(raw) as any[]).map(normalize) : [];
-        } catch {
-          return [];
-        }
-      };
+    const normalize = (b: any): CategoryBudget => ({
+      id: b.id,
+      category: b.category,
+      monthlyLimit: parseFloat(b.monthlyLimit ?? b.monthly_limit ?? 0),
+      yearMonth:
+        typeof (b.yearMonth ?? b.year_month) === 'string' &&
+        /^\d{4}-\d{2}$/.test(b.yearMonth ?? b.year_month)
+          ? (b.yearMonth ?? b.year_month)
+          : currentYm,
+    });
 
-      if (!this.isSupabaseConfigured()) return fromLocal();
-
+    const fromLocal = (): CategoryBudget[] => {
       try {
-        const { data, error } = await supabase
-          .from('budgets')
-          .select('*')
-          .eq('user_id', userId);
-
-        if (error) {
-          console.warn('⚠️ Erro ao buscar orçamentos. Usando localStorage.', error);
-          return fromLocal();
-        }
-
-        const budgets = (data || []).map(normalize);
-        localStorage.setItem(this.getBudgetsKey(userId), JSON.stringify(budgets));
-        return budgets;
+        const raw = localStorage.getItem(this.getBudgetsKey(userId));
+        return raw ? (JSON.parse(raw) as any[]).map(normalize) : [];
       } catch {
+        return [];
+      }
+    };
+
+    if (!this.isSupabaseConfigured()) return fromLocal();
+
+    try {
+      const { data, error } = await supabase
+        .from('budgets')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.warn('⚠️ Erro ao buscar orçamentos. Usando localStorage.', error);
         return fromLocal();
       }
+
+      const budgets = (data || []).map(normalize);
+      localStorage.setItem(this.getBudgetsKey(userId), JSON.stringify(budgets));
+      return budgets;
+    } catch {
+      return fromLocal();
     }
+  }
 
-    async saveBudgets(userId: string, budgets: CategoryBudget[]): Promise<void> {
-      const normalized = budgets.map((b) => ({
-        ...b,
-        period: b.period === 'yearly' ? 'yearly' as const : 'monthly' as const,
-      }));
-      localStorage.setItem(this.getBudgetsKey(userId), JSON.stringify(normalized));
+  async saveBudgets(userId: string, budgets: CategoryBudget[]): Promise<void> {
+    const normalized = budgets.map((b) => ({
+      ...b,
+      yearMonth: /^\d{4}-\d{2}$/.test(b.yearMonth) ? b.yearMonth : b.yearMonth,
+    }));
+    localStorage.setItem(this.getBudgetsKey(userId), JSON.stringify(normalized));
 
-      if (!this.isSupabaseConfigured()) return;
+    if (!this.isSupabaseConfigured()) return;
 
-      try {
-        await supabase.from('budgets').delete().eq('user_id', userId);
-        if (normalized.length === 0) return;
+    try {
+      await supabase.from('budgets').delete().eq('user_id', userId);
+      if (normalized.length === 0) return;
 
-        const { error } = await supabase.from('budgets').insert(
-          normalized.map((b) => ({
-            id: b.id,
-            user_id: userId,
-            category: b.category,
-            monthly_limit: b.monthlyLimit,
-            period: b.period,
-            updated_at: new Date().toISOString(),
-          }))
-        );
-        if (error) console.warn('⚠️ Erro ao salvar orçamentos:', error);
-      } catch (error) {
-        console.warn('⚠️ Erro ao salvar orçamentos:', error);
-      }
+      const { error } = await supabase.from('budgets').insert(
+        normalized.map((b) => ({
+          id: b.id,
+          user_id: userId,
+          category: b.category,
+          monthly_limit: b.monthlyLimit,
+          year_month: b.yearMonth,
+          updated_at: new Date().toISOString(),
+        }))
+      );
+      if (error) console.warn('⚠️ Erro ao salvar orçamentos:', error);
+    } catch (error) {
+      console.warn('⚠️ Erro ao salvar orçamentos:', error);
     }
+  }
 
   // ========== CONTAS LONGAS / PARCELAMENTOS ==========
 
@@ -1332,6 +1341,159 @@ class CloudDatabase {
       if (error) console.warn('⚠️ Erro ao salvar parcelamentos:', error);
     } catch (error) {
       console.warn('⚠️ Erro ao salvar parcelamentos:', error);
+    }
+  }
+
+  // ========== COMPRAS (TRIPS + LINES) ==========
+
+  private getShoppingTripsKey(userId: string) {
+    return `fintrack_${userId}_shopping_trips`;
+  }
+
+  private getShoppingLinesKey(userId: string) {
+    return `fintrack_${userId}_shopping_lines`;
+  }
+
+  async getShoppingTrips(userId: string): Promise<ShoppingTrip[]> {
+    const normalize = (row: any): ShoppingTrip => ({
+      id: row.id,
+      name: row.name,
+      date: row.date ?? row.trip_date,
+      category: row.category,
+      kind: row.kind === 'occasional' ? 'occasional' : 'market',
+      status: row.status === 'done' ? 'done' : 'open',
+      notes: row.notes || undefined,
+      syncedToTransactions: !!(row.syncedToTransactions ?? row.synced_to_transactions),
+    });
+
+    const fromLocal = (): ShoppingTrip[] => {
+      try {
+        const raw = localStorage.getItem(this.getShoppingTripsKey(userId));
+        return raw ? (JSON.parse(raw) as any[]).map(normalize) : [];
+      } catch {
+        return [];
+      }
+    };
+
+    if (!this.isSupabaseConfigured()) return fromLocal();
+
+    try {
+      const { data, error } = await supabase
+        .from('shopping_trips')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.warn('⚠️ Erro ao buscar shopping_trips. Usando localStorage.', error);
+        return fromLocal();
+      }
+
+      const trips = (data || []).map(normalize);
+      localStorage.setItem(this.getShoppingTripsKey(userId), JSON.stringify(trips));
+      return trips;
+    } catch {
+      return fromLocal();
+    }
+  }
+
+  async saveShoppingTrips(userId: string, trips: ShoppingTrip[]): Promise<void> {
+    localStorage.setItem(this.getShoppingTripsKey(userId), JSON.stringify(trips));
+    if (!this.isSupabaseConfigured()) return;
+
+    try {
+      await supabase.from('shopping_trips').delete().eq('user_id', userId);
+      if (trips.length === 0) return;
+
+      const { error } = await supabase.from('shopping_trips').insert(
+        trips.map((t) => ({
+          id: t.id,
+          user_id: userId,
+          name: t.name,
+          trip_date: t.date,
+          category: t.category,
+          kind: t.kind,
+          status: t.status,
+          notes: t.notes || null,
+          synced_to_transactions: !!t.syncedToTransactions,
+          updated_at: new Date().toISOString(),
+        }))
+      );
+      if (error) console.warn('⚠️ Erro ao salvar shopping_trips:', error);
+    } catch (error) {
+      console.warn('⚠️ Erro ao salvar shopping_trips:', error);
+    }
+  }
+
+  async getShoppingLines(userId: string): Promise<ShoppingLine[]> {
+    const normalize = (row: any): ShoppingLine => {
+      const rawStatus = row.stockStatus ?? row.stock_status ?? 'have';
+      const stockStatus =
+        rawStatus === 'low' || rawStatus === 'out' || rawStatus === 'have'
+          ? rawStatus
+          : 'have';
+      return {
+        id: row.id,
+        tripId: row.tripId ?? row.trip_id,
+        productName: row.productName ?? row.product_name,
+        quantity: parseFloat(row.quantity ?? 1),
+        unitPrice: parseFloat(row.unitPrice ?? row.unit_price ?? 0),
+        stockStatus,
+      };
+    };
+
+    const fromLocal = (): ShoppingLine[] => {
+      try {
+        const raw = localStorage.getItem(this.getShoppingLinesKey(userId));
+        return raw ? (JSON.parse(raw) as any[]).map(normalize) : [];
+      } catch {
+        return [];
+      }
+    };
+
+    if (!this.isSupabaseConfigured()) return fromLocal();
+
+    try {
+      const { data, error } = await supabase
+        .from('shopping_lines')
+        .select('*')
+        .eq('user_id', userId);
+
+      if (error) {
+        console.warn('⚠️ Erro ao buscar shopping_lines. Usando localStorage.', error);
+        return fromLocal();
+      }
+
+      const lines = (data || []).map(normalize);
+      localStorage.setItem(this.getShoppingLinesKey(userId), JSON.stringify(lines));
+      return lines;
+    } catch {
+      return fromLocal();
+    }
+  }
+
+  async saveShoppingLines(userId: string, lines: ShoppingLine[]): Promise<void> {
+    localStorage.setItem(this.getShoppingLinesKey(userId), JSON.stringify(lines));
+    if (!this.isSupabaseConfigured()) return;
+
+    try {
+      await supabase.from('shopping_lines').delete().eq('user_id', userId);
+      if (lines.length === 0) return;
+
+      const { error } = await supabase.from('shopping_lines').insert(
+        lines.map((l) => ({
+          id: l.id,
+          user_id: userId,
+          trip_id: l.tripId,
+          product_name: l.productName,
+          quantity: l.quantity,
+          unit_price: l.unitPrice,
+          stock_status: l.stockStatus || 'have',
+          updated_at: new Date().toISOString(),
+        }))
+      );
+      if (error) console.warn('⚠️ Erro ao salvar shopping_lines:', error);
+    } catch (error) {
+      console.warn('⚠️ Erro ao salvar shopping_lines:', error);
     }
   }
 }

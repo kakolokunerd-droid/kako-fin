@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useRef } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   CalendarRange,
   Plus,
@@ -16,6 +16,8 @@ import {
   getInstallmentSchedule,
   monthlyInstallmentBurden,
 } from '../services/financialHealth';
+import FormSelect from './FormSelect';
+import MonthPicker from './MonthPicker';
 
 interface InstallmentsProps {
   plans: InstallmentPlan[];
@@ -43,7 +45,7 @@ const Installments: React.FC<InstallmentsProps> = ({
   monthIncome = 0,
 }) => {
   const ymNow = currentYearMonth();
-  const formRef = useRef<HTMLFormElement>(null);
+  const [showModal, setShowModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [totalAmount, setTotalAmount] = useState('');
@@ -77,6 +79,11 @@ const Installments: React.FC<InstallmentsProps> = ({
     setCategory(f.category);
   };
 
+  const openCreateModal = () => {
+    resetForm();
+    setShowModal(true);
+  };
+
   const startEdit = (plan: InstallmentPlan) => {
     setEditingId(plan.id);
     setName(plan.name);
@@ -87,9 +94,7 @@ const Installments: React.FC<InstallmentsProps> = ({
     setDueDay(String(plan.dueDay));
     setCategory(plan.category);
     setExpandedId(plan.id);
-    requestAnimationFrame(() => {
-      formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
+    setShowModal(true);
   };
 
   const syncParcelFromTotal = (totalStr: string, countStr: string) => {
@@ -165,6 +170,7 @@ const Installments: React.FC<InstallmentsProps> = ({
         showToast?.('Conta longa atualizada.', 'success');
         setExpandedId(editingId);
         resetForm();
+        setShowModal(false);
       } else {
         const plan: InstallmentPlan = {
           id: Math.random().toString(36).slice(2, 11),
@@ -180,6 +186,7 @@ const Installments: React.FC<InstallmentsProps> = ({
         await onSave([...plans, plan]);
         setExpandedId(plan.id);
         resetForm();
+        setShowModal(false);
         showToast?.(`${count} parcelas agendadas até o fim do financiamento.`, 'success');
       }
     } finally {
@@ -229,7 +236,7 @@ const Installments: React.FC<InstallmentsProps> = ({
 
   return (
     <div className="space-y-6">
-      <div className="bg-gradient-to-r from-slate-800 to-slate-700 text-white rounded-3xl p-6 shadow-lg">
+      <div className="bg-gradient-to-br from-slate-800 via-slate-800 to-teal-950 text-white rounded-3xl p-6 shadow-lg border border-slate-700/80">
         <div className="flex items-start gap-3">
           <CalendarRange size={28} className="mt-0.5 shrink-0 text-teal-300" />
           <div className="min-w-0">
@@ -279,172 +286,203 @@ const Installments: React.FC<InstallmentsProps> = ({
         </div>
       </div>
 
-      <form
-        ref={formRef}
-        onSubmit={handleSubmit}
-        className={`bg-white dark:bg-slate-900 p-4 md:p-6 rounded-2xl border shadow-sm space-y-4 ${
-          editingId
-            ? 'border-teal-400 dark:border-teal-600 ring-2 ring-teal-500/20'
-            : 'border-slate-200 dark:border-slate-700'
-        }`}
-      >
-        <div className="flex items-center justify-between gap-2">
-          <h4 className="font-bold text-slate-800 dark:text-slate-100">
-            {editingId ? 'Editar parcelamento' : 'Novo parcelamento'}
-          </h4>
-          {editingId && (
-            <button
-              type="button"
-              onClick={resetForm}
-              className="flex items-center gap-1 text-sm font-semibold text-slate-500 hover:text-slate-800"
-            >
-              <X size={16} />
-              Cancelar
-            </button>
-          )}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-slate-500">
+          Financiamentos e compras parceladas com começo e fim.
+        </p>
+        <button
+          type="button"
+          onClick={openCreateModal}
+          className="inline-flex items-center gap-2 bg-teal-600 text-white px-5 py-2.5 rounded-xl font-semibold hover:bg-teal-700"
+        >
+          <Plus size={18} />
+          Nova conta longa
+        </button>
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl w-full max-w-lg shadow-2xl border border-slate-200 dark:border-slate-700 max-h-[90vh] flex flex-col overflow-visible">
+            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shrink-0 rounded-t-3xl">
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                {editingId ? 'Editar conta longa' : 'Nova conta longa'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => {
+                  resetForm();
+                  setShowModal(false);
+                }}
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleSubmit} className="p-5 space-y-4 overflow-y-auto overflow-x-visible">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                  O que é?
+                </label>
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="Ex: Financiamento do carro, Empréstimo pessoal"
+                  className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium"
+                  required
+                  autoFocus
+                />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                    Valor total (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={totalAmount}
+                    onChange={(e) => {
+                      setTotalAmount(e.target.value);
+                      syncParcelFromTotal(e.target.value, totalInstallments);
+                    }}
+                    placeholder="45000"
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                    Qtd. de parcelas
+                  </label>
+                  <input
+                    type="number"
+                    min="2"
+                    max="480"
+                    value={totalInstallments}
+                    onChange={(e) => {
+                      setTotalInstallments(e.target.value);
+                      syncParcelFromTotal(totalAmount, e.target.value);
+                    }}
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium"
+                    required
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                    Valor da parcela (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={installmentAmount}
+                    onChange={(e) => setInstallmentAmount(e.target.value)}
+                    placeholder="Calculado ou digite"
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Pode diferir do total ÷ parcelas (juros do banco).
+                  </p>
+                </div>
+                <div>
+                  <MonthPicker
+                    label="Mês da 1ª parcela"
+                    value={startYearMonth}
+                    onChange={setStartYearMonth}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5">
+                    Dia do vencimento
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={dueDay}
+                    onChange={(e) => setDueDay(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-2xl outline-none focus:ring-2 focus:ring-teal-500 text-sm font-medium"
+                    required
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <FormSelect
+                    label="Categoria"
+                    accent="teal"
+                    value={category}
+                    onChange={setCategory}
+                    options={Object.values(Category).map((c) => ({ value: c, label: c }))}
+                  />
+                </div>
+              </div>
+              {editingId && (
+                <p className="text-xs text-slate-500">
+                  Parcelas já pagas são mantidas (se ainda existirem no novo prazo).
+                </p>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetForm();
+                    setShowModal(false);
+                  }}
+                  className="flex-1 py-3 text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-50 dark:hover:bg-slate-800 rounded-xl"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex-1 py-3 bg-teal-600 text-white font-bold hover:bg-teal-700 rounded-xl disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                >
+                  {editingId ? (
+                    <>
+                      <Edit2 size={16} />
+                      Salvar
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={16} />
+                      Agendar
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-          <div className="lg:col-span-3">
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">O que é?</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="Ex: Financiamento do carro, Empréstimo pessoal, Notebook"
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-              Valor total (R$)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={totalAmount}
-              onChange={(e) => {
-                setTotalAmount(e.target.value);
-                syncParcelFromTotal(e.target.value, totalInstallments);
-              }}
-              placeholder="45000"
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-              Qtd. de parcelas
-            </label>
-            <input
-              type="number"
-              min="2"
-              max="480"
-              value={totalInstallments}
-              onChange={(e) => {
-                setTotalInstallments(e.target.value);
-                syncParcelFromTotal(totalAmount, e.target.value);
-              }}
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-              Valor da parcela (R$)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              min="0"
-              value={installmentAmount}
-              onChange={(e) => setInstallmentAmount(e.target.value)}
-              placeholder="Calculado ou digite"
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
-              required
-            />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Pode diferir do total ÷ parcelas (juros do banco).
-            </p>
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-              Mês da 1ª parcela
-            </label>
-            <input
-              type="month"
-              value={startYearMonth}
-              onChange={(e) => setStartYearMonth(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">
-              Dia do vencimento
-            </label>
-            <input
-              type="number"
-              min="1"
-              max="31"
-              value={dueDay}
-              onChange={(e) => setDueDay(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
-              required
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Categoria</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-              className="w-full px-4 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-xl outline-none focus:ring-2 focus:ring-teal-500"
-            >
-              {Object.values(Category).map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            disabled={saving}
-            className="w-full md:w-auto flex items-center justify-center gap-2 bg-teal-600 text-white px-6 py-2.5 rounded-xl font-semibold hover:bg-teal-700 disabled:opacity-50"
-          >
-            {editingId ? (
-              <>
-                <Edit2 size={18} />
-                Salvar alterações
-              </>
-            ) : (
-              <>
-                <Plus size={18} />
-                Agendar parcelas
-              </>
-            )}
-          </button>
-        </div>
-        {editingId && (
-          <p className="text-xs text-slate-500">
-            As parcelas já marcadas como pagas são mantidas (se ainda existirem no novo prazo).
-          </p>
-        )}
-      </form>
+      )}
 
       {plans.length === 0 ? (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-700 py-16 text-center text-slate-400">
+        <div className="bg-slate-100 dark:bg-slate-950/50 rounded-3xl border border-dashed border-slate-300 dark:border-slate-700 py-16 text-center text-slate-400">
           <CalendarRange className="mx-auto mb-3 opacity-50" size={36} />
           <p className="font-medium text-slate-600 dark:text-slate-300">Nenhuma conta longa ainda</p>
           <p className="text-sm mt-1 max-w-md mx-auto">
             Cadastre carro, empréstimo ou compra no cartão em várias vezes para ver o peso no futuro
             e receber alertas se o compromisso ficar alto.
           </p>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="mt-4 inline-flex items-center gap-2 bg-teal-600 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-teal-700"
+          >
+            <Plus size={16} />
+            Cadastrar agora
+          </button>
         </div>
       ) : (
-        <div className="space-y-3">
+        <section className="rounded-3xl bg-slate-100/90 dark:bg-slate-950/55 border border-slate-200 dark:border-slate-800 p-3 sm:p-4 space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h4 className="text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              Suas contas
+            </h4>
+            <span className="text-xs text-slate-400">
+              {plans.length} {plans.length === 1 ? 'conta' : 'contas'}
+            </span>
+          </div>
           {plans.map((plan) => {
             const schedule = getInstallmentSchedule(plan);
             const paidCount = schedule.filter((s) => s.paid).length;
@@ -457,10 +495,10 @@ const Installments: React.FC<InstallmentsProps> = ({
             return (
               <div
                 key={plan.id}
-                className={`bg-white dark:bg-slate-900 rounded-2xl border shadow-sm overflow-hidden ${
+                className={`bg-white dark:bg-slate-800 rounded-2xl border shadow-md dark:shadow-none overflow-hidden ${
                   isEditing
-                    ? 'border-teal-400 dark:border-teal-600'
-                    : 'border-slate-200 dark:border-slate-700'
+                    ? 'border-teal-400 dark:border-teal-500'
+                    : 'border-slate-200 dark:border-slate-600'
                 }`}
               >
                 <div className="p-4 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
@@ -494,7 +532,7 @@ const Installments: React.FC<InstallmentsProps> = ({
                         ? ` · Próxima: ${next.number}ª (${next.dueDate.split('-').reverse().join('/')})`
                         : ''}
                     </p>
-                    <div className="mt-2 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden max-w-xs">
+                    <div className="mt-2 h-1.5 bg-slate-100 dark:bg-slate-700/80 rounded-full overflow-hidden max-w-xs">
                       <div
                         className="h-full bg-teal-500 rounded-full transition-all"
                         style={{ width: `${pct}%` }}
@@ -530,8 +568,18 @@ const Installments: React.FC<InstallmentsProps> = ({
                 </div>
 
                 {expanded && (
-                  <div className="border-t border-slate-100 dark:border-slate-800 max-h-72 overflow-y-auto">
-                    {schedule.map((occ) => (
+                  <div
+                    className={[
+                      'border-t border-slate-100 dark:border-slate-700 max-h-72 overflow-y-auto',
+                      '[scrollbar-width:thin]',
+                      '[scrollbar-color:rgb(148_163_184_/_0.55)_transparent]',
+                      '[&::-webkit-scrollbar]:w-1.5',
+                      '[&::-webkit-scrollbar-track]:bg-transparent',
+                      '[&::-webkit-scrollbar-thumb]:rounded-full',
+                      '[&::-webkit-scrollbar-thumb]:bg-slate-400/50',
+                      'dark:[&::-webkit-scrollbar-thumb]:bg-slate-500/60',
+                    ].join(' ')}
+                  >                    {schedule.map((occ) => (
                       <div
                         key={occ.number}
                         className={`px-4 py-2.5 flex items-center justify-between gap-2 text-sm ${
@@ -577,7 +625,7 @@ const Installments: React.FC<InstallmentsProps> = ({
               </div>
             );
           })}
-        </div>
+        </section>
       )}
     </div>
   );

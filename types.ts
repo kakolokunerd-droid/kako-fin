@@ -55,14 +55,50 @@ export enum Category {
 
 export type PurchaseType = 'cash' | 'installment';
 
+/** @deprecated modelo antigo de compras avulsas — migrado para ShoppingTrip */
 export interface ShoppingItem {
   id: string;
   name: string;
   type: PurchaseType;
   purchaseDate: string;
   amount: number;
-  installments?: number; // Apenas para compras parceladas
+  installments?: number;
   category: string;
+}
+
+/** Tipo da ida: mercado/lista vs gasto avulso (churrasquinho, delivery…) */
+export type ShoppingTripKind = 'market' | 'occasional';
+
+export type ShoppingTripStatus = 'open' | 'done';
+
+/** Uma ida às compras / carrinho (mercado, churrasco, farmácia…) */
+export interface ShoppingTrip {
+  id: string;
+  /** Ex.: "Mercado Extra", "Churrasquinho do Zé" */
+  name: string;
+  date: string; // YYYY-MM-DD
+  category: string;
+  kind: ShoppingTripKind;
+  status: ShoppingTripStatus;
+  notes?: string;
+  /** Já gerou despesa em Transações */
+  syncedToTransactions?: boolean;
+}
+
+/** Produto/item dentro de um carrinho */
+export type StockStatus = 'have' | 'low' | 'out';
+
+export interface ShoppingLine {
+  id: string;
+  tripId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number;
+  /**
+   * Estoque em casa (compras de mercado).
+   * have = tenho · low = acabando · out = acabou (riscado / repor)
+   */
+  stockStatus?: StockStatus;
 }
 
 export interface Notification {
@@ -92,17 +128,16 @@ export type SavingsPeriod =
   | '2y'
   | '5y';
 
-/** Período do orçamento por categoria */
-export type BudgetPeriod = 'monthly' | 'yearly';
-
-/** Orçamento por categoria (mensal ou anual) */
+/** Orçamento por categoria em um mês específico (YYYY-MM).
+ * O orçamento anual = soma dos limites mensais do ano.
+ */
 export interface CategoryBudget {
   id: string;
   category: string;
-  /** Limite do período (mês ou ano) */
+  /** Limite da categoria naquele mês */
   monthlyLimit: number;
-  /** monthly = mês corrente; yearly = ano corrente */
-  period: BudgetPeriod;
+  /** Mês do orçamento (YYYY-MM) */
+  yearMonth: string;
 }
 
 /**
